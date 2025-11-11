@@ -37,7 +37,7 @@ def register_navigation_callbacks(app):
         """
         logger.info(f"🧭 Navegando para: {pathname}")
         pages = {
-            "/eto_calculator": eto_layout,
+            "/eto-calculator": eto_layout,  # ✅ Rota principal
             "/about": about_layout,
             "/documentation": documentation_layout,
         }
@@ -70,7 +70,7 @@ def register_navigation_callbacks(app):
         if "calc-eto-button" in trigger_id and n_clicks > 0:
             if current_location and current_location.get("lat"):
                 logger.info("📍 Navegando para ETo com localização atual")
-                return "/eto"
+                return "/eto-calculator"
             else:
                 logger.warning(
                     "❌ Tentativa de navegação sem localização selecionada"
@@ -91,7 +91,7 @@ def register_navigation_callbacks(app):
                     logger.info(
                         f"⭐ Navegando para ETo com favorito: {favorite.get('location_info', 'Unknown')}"
                     )
-                    return "/eto_calculator"
+                    return "/eto-calculator"  # ✅ Corrigido
             except Exception as e:
                 logger.error(f"Erro ao navegar com favorito: {e}")
 
@@ -125,7 +125,7 @@ def register_navigation_callbacks(app):
             return "/"
         elif "nav-eto" in trigger_id and eto_clicks:
             logger.info("📊 Navegando para ETo")
-            return "/eto_calculator"
+            return "/eto-calculator"  # ✅ Corrigido
         elif "nav-documentation" in trigger_id and doc_clicks:
             logger.info("📚 Navegando para Documentação")
             return "/documentation"
@@ -164,7 +164,7 @@ def register_navigation_callbacks(app):
         """
         Atualiza os links ativos na navbar baseado na página atual
         """
-        if pathname == "/eto_calculator":
+        if pathname == "/eto-calculator":
             return False, True, False, False
         elif pathname == "/documentation":
             return False, False, True, False

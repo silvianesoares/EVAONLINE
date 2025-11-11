@@ -59,7 +59,7 @@ def create_clear_favorites_button():
     return dbc.Button(
         [html.I(className="bi bi-trash me-2"), "🧹 Limpar Todos os Favoritos"],
         id="clear-favorites-button",
-        color="warning",
+        color="danger",
         className="mt-2",
         n_clicks=0,
         size="sm",
@@ -79,19 +79,29 @@ def create_favorite_item(favorite):
         [
             html.Td(
                 [
-                    html.Div(favorite.get("lat_dms", "N/A"), className="fw-bold"),
-                    html.Div(favorite.get("lon_dms", "N/A"), className="text-muted small"),
                     html.Div(
-                        f"({favorite.get('lat', 0):.4f}, " f"{favorite.get('lon', 0):.4f})",
+                        favorite.get("lat_dms", "N/A"), className="fw-bold"
+                    ),
+                    html.Div(
+                        favorite.get("lon_dms", "N/A"),
+                        className="text-muted small",
+                    ),
+                    html.Div(
+                        f"({favorite.get('lat', 0):.4f}, "
+                        f"{favorite.get('lon', 0):.4f})",
                         className="text-muted small",
                     ),
                 ]
             ),
             html.Td(
                 [
-                    html.Div(favorite.get("timezone", "N/A"), className="fw-bold"),
                     html.Div(
-                        favorite.get("location_info", "Local não identificado"),
+                        favorite.get("timezone", "N/A"), className="fw-bold"
+                    ),
+                    html.Div(
+                        favorite.get(
+                            "location_info", "Local não identificado"
+                        ),
                         className="text-muted small mt-1",
                     ),
                 ]
@@ -110,7 +120,10 @@ def create_favorite_item(favorite):
                         color="danger",
                         size="sm",
                         className="mb-1",
-                        id={"type": "delete-favorite", "index": favorite["id"]},
+                        id={
+                            "type": "delete-favorite",
+                            "index": favorite["id"],
+                        },
                     ),
                 ],
                 style={"minWidth": "150px"},

@@ -12,7 +12,7 @@ from .favorites_components import (
 )
 from .footer import create_footer
 from .navbar import create_navbar
-from .world_map_interactive import create_world_map
+from .world_map_leaflet import create_world_map
 
 # Exportar os componentes
 __all__ = [
@@ -24,6 +24,5 @@ __all__ = [
     "create_favorite_item",
     "create_favorites_table",
     "create_empty_favorites_alert",
-    "render_world_map",
     "create_world_map",
 ]

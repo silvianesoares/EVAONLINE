@@ -45,13 +45,17 @@ def create_navbar():
                         # Links internos (pages/)
                         dbc.NavItem(
                             dbc.NavLink(
-                                "Home", href="/", className="nav-link-custom"
+                                "Home",
+                                href="/",
+                                id="nav-home",
+                                className="nav-link-custom",
                             )
                         ),
                         dbc.NavItem(
                             dbc.NavLink(
                                 "Calcular ETo",
-                                href="/eto_calculator",
+                                href="/eto-calculator",
+                                id="nav-eto",
                                 className="nav-link-custom",
                             )
                         ),
@@ -59,6 +63,7 @@ def create_navbar():
                             dbc.NavLink(
                                 "Documentação",
                                 href="/documentation",
+                                id="nav-documentation",
                                 className="nav-link-custom",
                             )
                         ),
@@ -66,6 +71,7 @@ def create_navbar():
                             dbc.NavLink(
                                 "Sobre",
                                 href="/about",
+                                id="nav-about",
                                 className="nav-link-custom",
                             )
                         ),

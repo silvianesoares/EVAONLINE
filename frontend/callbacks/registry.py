@@ -8,22 +8,40 @@ logger = logging.getLogger(__name__)
 
 
 def register_all_callbacks(app):
-    """Registra todos callbacks."""
+    """Registra todos callbacks ativos."""
     try:
-        # Import and register home callbacks
+        # ✅ Callback principal da home (mapa leaflet + coordenadas)
         from .home_callbacks import register_home_callbacks
 
         register_home_callbacks(app)
 
-        # Temporarily disabled other callbacks to isolate issue
-        # register_world_map_callbacks(app)
+        # ✅ Callbacks de navegação (rotas)
+        from .navigation_callbacks import register_navigation_callbacks
+
+        register_navigation_callbacks(app)
+
+        # 🔄 Callbacks a serem reativados conforme necessário:
+        # from .eto_callbacks import register_eto_callbacks
         # register_eto_callbacks(app)
+
+        # from .favorites_callbacks import register_favorites_callbacks
         # register_favorites_callbacks(app)
+
+        # from .navigation_callbacks import register_navigation_callbacks
         # register_navigation_callbacks(app)
+
+        # from .cache_callbacks import register_cache_callbacks
         # register_cache_callbacks(app)
+
+        # from .selection_info_callbacks import (
+        #     register_selection_info_callbacks
+        # )
         # register_selection_info_callbacks(app)
+
+        # from .location_sync_callbacks import register_location_sync_callbacks
         # register_location_sync_callbacks(app)
+
         logger.info("✅ Todos callbacks registrados!")
     except Exception as e:
-        logger.error(f"❌ Erro: {e}")
+        logger.error(f"❌ Erro ao registrar callbacks: {e}")
         raise

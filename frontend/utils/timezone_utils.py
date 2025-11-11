@@ -1,37 +1,86 @@
 import logging
+import requests
 
 from geopy.geocoders import Nominatim
-from timezonefinderL import TimezoneFinder
 
 # Initialize services
-tf = TimezoneFinder()
 geolocator = Nominatim(user_agent="eto_calculator")
 
 # Configurar logger específico para este módulo
 logger = logging.getLogger(__name__)
 
 
-def get_timezone(lat, lon):
-    """Get timezone for given coordinates usando TimezoneFinder"""
+def get_timezone_from_coordinates(lat, lon):
+    """
+    Obtém timezone a partir de coordenadas usando OpenTopoData API.
+
+    API: https://www.opentopodata.org/
+
+    Args:
+        lat (float): Latitude
+        lon (float): Longitude
+
+    Returns:
+        str: Timezone (ex: 'America/Sao_Paulo') ou 'UTC' se falhar
+    """
     try:
-        # Cálculo do fuso horário
-        timezone_str = tf.timezone_at(lat=lat, lng=lon)
-        logger.debug(f"🌍 Fuso horário detectado: {timezone_str} " f"para ({lat:.4f}, {lon:.4f})")
-        return timezone_str if timezone_str else "UTC"
+        # OpenTopoData timezone API
+        url = f"https://api.opentopodata.org/v1/timezone?locations={lat},{lon}"
+        response = requests.get(url, timeout=5)
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("results") and len(data["results"]) > 0:
+                timezone = data["results"][0].get("timezone")
+                if timezone:
+                    logger.info(
+                        f"Timezone encontrado: {timezone} para ({lat}, {lon})"
+                    )
+                    return timezone
+
+        logger.warning(
+            f"Timezone não encontrado via OpenTopoData para ({lat}, {lon})"
+        )
+        return "UTC"
+
     except Exception as e:
-        logger.error(f"❌ Erro ao obter fuso horário para ({lat:.4f}, {lon:.4f}): {e}")
+        logger.error(f"Erro ao buscar timezone: {e}")
         return "UTC"
 
 
+def get_timezone(lat, lon):
+    """
+    Get timezone for given coordinates usando OpenTopoData API.
+
+    Args:
+        lat (float): Latitude
+        lon (float): Longitude
+
+    Returns:
+        str: Timezone ou 'UTC' se falhar
+    """
+    return get_timezone_from_coordinates(lat, lon)
+
+
 def get_location_info(lat, lon):
-    """Get location information using geopy"""
+    """
+    Get location information using geopy.
+
+    Args:
+        lat (float): Latitude
+        lon (float): Longitude
+
+    Returns:
+        str: Endereço completo ou mensagem de erro
+    """
     try:
-        location = geolocator.reverse((lat, lon), language="pt")
-        address = location.address if location else "Localização não encontrada"
-        return address
+        location = geolocator.reverse(f"{lat}, {lon}", timeout=10)
+        if location:
+            return location.address
+        return "Localização não encontrada"
     except Exception as e:
         logger.error(
-            f"❌ Erro ao obter informações de localização para " f"({lat:.4f}, {lon:.4f}): {e}"
+            f"Erro ao obter localização para ({lat:.4f}, {lon:.4f}): {e}"
         )
         return "Localização não disponível"
 

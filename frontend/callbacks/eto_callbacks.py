@@ -24,7 +24,7 @@ def register_eto_callbacks(app):
         Exibe informações da localização selecionada na página ETo.
         """
         if (
-            pathname != "/eto_calculator"
+            pathname != "/eto-calculator"
             or not current_location
             or not current_location.get("lat")
         ):

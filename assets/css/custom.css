@@ -1,0 +1,62 @@
+/* Custom CSS for EVAONLINE - ETO Calculator */
+
+/* ===== Button Animations ===== */
+
+/* Pulse animation when button becomes enabled */
+@keyframes pulse-glow {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
+    }
+
+    50% {
+        box-shadow: 0 0 10px 5px rgba(255, 193, 7, 0.4);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+    }
+}
+
+/* Apply animation to enabled "Adicionar" button */
+.add-favorite-button:not(:disabled) {
+    animation: pulse-glow 1.5s ease-in-out 2;
+    transition: all 0.3s ease;
+}
+
+/* Improved disabled state visibility */
+.add-favorite-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: grayscale(30%);
+}
+
+/* Hover effect on enabled button */
+.add-favorite-button:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(255, 193, 7, 0.3);
+}
+
+/* Active state (click) */
+.add-favorite-button:not(:disabled):active {
+    transform: translateY(0);
+}
+
+/* ===== Responsive adjustments ===== */
+
+/* Ensure consistent sizing on zoom */
+@media (min-width: 768px) {
+    .favorites-sidebar-card {
+        min-height: 680px;
+        max-height: 680px;
+    }
+}
+
+/* ===== Tooltip improvements ===== */
+
+/* Bootstrap tooltip customization */
+.tooltip-inner {
+    max-width: 250px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    text-align: left;
+}

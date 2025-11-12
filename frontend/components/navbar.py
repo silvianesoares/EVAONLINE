@@ -189,7 +189,6 @@ def create_navbar():
             ),
         ],
         color="light",  # Fundo claro como C4AI
-        light=True,
         className="navbar-expand-lg shadow-sm",
         style={
             "backgroundColor": "#ffffff",

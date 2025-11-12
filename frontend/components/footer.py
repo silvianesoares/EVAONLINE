@@ -325,6 +325,41 @@ def create_footer(lang: str = "pt") -> html.Footer:
                             ],
                             className="py-4 justify-content-center",
                         ),
+                        # Contador de Visitantes (tempo real)
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    html.Div(
+                                        [
+                                            html.I(
+                                                className="bi bi-people-fill me-2",
+                                                style={"color": "#6c757d"},
+                                            ),
+                                            html.Span(
+                                                "Visitantes: ",
+                                                className="text-muted small",
+                                            ),
+                                            html.Strong(
+                                                id="visitor-count",
+                                                children="...",
+                                                className="text-primary small",
+                                            ),
+                                            html.Span(
+                                                " | Última hora: ",
+                                                className="text-muted small ms-2",
+                                            ),
+                                            html.Strong(
+                                                id="visitor-count-hourly",
+                                                children="...",
+                                                className="text-info small",
+                                            ),
+                                        ],
+                                        className="text-center mb-2",
+                                    ),
+                                    width=12,
+                                ),
+                            ],
+                        ),
                         # Linha de Copyright
                         html.Hr(
                             className="my-2", style={"borderColor": "#dee2e6"}

@@ -13,7 +13,7 @@ from backend.api.services.openmeteo_forecast.openmeteo_forecast_client import (
     OpenMeteoForecastClient,
 )
 from backend.api.services.met_norway.met_norway_client import (
-    METNorwayLocationForecastClient,
+    METNorwayClient,
 )
 from backend.api.services.nws_forecast.nws_forecast_client import (
     NWSForecastClient,
@@ -50,7 +50,7 @@ __all__ = [
     "NASAPowerClient",
     "OpenMeteoArchiveClient",
     "OpenMeteoForecastClient",
-    "METNorwayLocationForecastClient",
+    "METNorwayClient",
     "NWSForecastClient",
     "NWSStationsClient",
     # Adapters

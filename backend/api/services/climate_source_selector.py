@@ -26,10 +26,10 @@ from typing import Literal, Union
 from loguru import logger
 
 from backend.api.services.climate_factory import ClimateClientFactory
-from backend.api.services.met_norway.met_norway_client import (
-    METNorwayLocationForecastClient,
-)
 from backend.api.services.nasa_power.nasa_power_client import NASAPowerClient
+from backend.api.services.met_norway.met_norway_client import (
+    METNorwayClient,
+)
 from backend.api.services.nws_forecast.nws_forecast_client import (
     NWSForecastClient,
 )
@@ -54,7 +54,7 @@ ClimateSource = Literal[
 ]
 ClimateClient = Union[
     NASAPowerClient,
-    METNorwayLocationForecastClient,
+    METNorwayClient,
     NWSForecastClient,
     NWSStationsClient,
     OpenMeteoArchiveClient,
@@ -519,6 +519,125 @@ async def example_usage():
 
     # Cleanup global
     await ClimateClientFactory.close_all()
+
+
+def get_available_sources_for_frontend(lat: float, lon: float) -> dict:
+    """
+    Retorna fontes disponíveis formatadas para o frontend.
+
+    Usado pela interface dash_eto.py para popular dropdown de fontes.
+
+    Args:
+        lat: Latitude
+        lon: Longitude
+
+    Returns:
+        Dict com informações formatadas:
+        {
+            "recommended": "openmeteo_forecast",
+            "sources": [
+                {
+                    "value": "fusion",
+                    "label": "🔀 Fusão Inteligente (Recomendado)",
+                    "description": "Combina múltiplas fontes para melhor qualidade"
+                },
+                {
+                    "value": "openmeteo_forecast",
+                    "label": "Open-Meteo Forecast",
+                    "description": "Dados globais em tempo real",
+                    "icon": "🌍"
+                },
+                ...
+            ],
+            "location_info": {
+                "in_usa": False,
+                "in_nordic": False,
+                "region": "Global"
+            }
+        }
+    """
+    # Detecta região
+    in_usa = ClimateSourceSelector._is_in_usa(lat, lon)
+    in_nordic = ClimateSourceSelector._is_in_nordic(lat, lon)
+
+    region = (
+        "USA Continental"
+        if in_usa
+        else ("Região Nórdica" if in_nordic else "Global")
+    )
+
+    # Obtém fonte recomendada e todas disponíveis
+    recommended = ClimateSourceSelector.select_source(lat, lon)
+    all_sources = ClimateSourceSelector.get_all_sources(lat, lon)
+
+    # Mapeamento de ícones e descrições
+    source_metadata = {
+        "openmeteo_archive": {
+            "icon": "📚",
+            "label": "Open-Meteo Archive",
+            "description": "Dados históricos globais (1990-hoje)",
+        },
+        "openmeteo_forecast": {
+            "icon": "🌍",
+            "label": "Open-Meteo Forecast",
+            "description": "Dados recentes + previsão global",
+        },
+        "nasa_power": {
+            "icon": "🛰️",
+            "label": "NASA POWER",
+            "description": "Dados históricos globais (1990-hoje)",
+        },
+        "met_norway": {
+            "icon": "🇳🇴" if in_nordic else "🌐",
+            "label": "MET Norway" + (" (Alta Qualidade)" if in_nordic else ""),
+            "description": "Previsão meteorológica"
+            + (" - Resolução 1km" if in_nordic else " - Global"),
+        },
+        "nws_forecast": {
+            "icon": "🇺🇸",
+            "label": "NWS Forecast",
+            "description": "Previsão oficial NOAA (USA)",
+        },
+        "nws_stations": {
+            "icon": "📡",
+            "label": "NWS Stations",
+            "description": "Observações em tempo real (USA)",
+        },
+    }
+
+    # Monta lista de fontes formatadas
+    sources_list = [
+        {
+            "value": "fusion",
+            "label": "🔀 Fusão Inteligente (Recomendado)",
+            "description": f"Combina {len(all_sources)} fontes para melhor qualidade e cobertura",
+            "is_default": True,
+        }
+    ]
+
+    # Adiciona fontes individuais
+    for source in all_sources:
+        if source in source_metadata:
+            meta = source_metadata[source]
+            sources_list.append(
+                {
+                    "value": source,
+                    "label": f"{meta['icon']} {meta['label']}",
+                    "description": meta["description"],
+                    "is_recommended": source == recommended,
+                }
+            )
+
+    return {
+        "recommended": recommended,
+        "sources": sources_list,
+        "location_info": {
+            "in_usa": in_usa,
+            "in_nordic": in_nordic,
+            "region": region,
+        },
+        "total_sources": len(all_sources),
+    }
 
 
 if __name__ == "__main__":

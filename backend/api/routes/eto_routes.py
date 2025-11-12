@@ -69,22 +69,80 @@ async def calculate_eto(
     - Cache automático
     """
     try:
-        # TODO: Implementar serviço completo de cálculo ETo
-        # Por enquanto, retorna estrutura básica
+        from backend.core.eto_calculation.eto_services import (
+            EToProcessingService,
+        )
+        from backend.api.services.climate_source_selector import (
+            get_available_sources_for_frontend,
+        )
+
+        # 1. Validar fonte de dados
+        if request.sources == "auto" or not request.sources:
+            # Auto-detectar melhor fonte
+            sources_info = get_available_sources_for_frontend(
+                request.lat, request.lng
+            )
+            selected_source = sources_info["recommended"]
+        else:
+            selected_source = request.sources
+
+        # 2. Mapear fonte para formato esperado pelo serviço
+        source_mapping = {
+            "fusion": "kalman",
+            "openmeteo_forecast": "openmeteo_forecast",
+            "openmeteo_archive": "openmeteo_archive",
+            "nasa_power": "nasa_power",
+            "met_norway": "met_norway",
+            "nws_forecast": "nws_forecast",
+            "nws_stations": "nws_stations",
+        }
+
+        database = source_mapping.get(
+            str(selected_source), "openmeteo_forecast"
+        )
+
+        # 3. Obter elevação (se não fornecida)
+        elevation = request.elevation
+        if elevation is None:
+            # TODO: Buscar elevação via API (Open-Elevation ou similar)
+            elevation = 0.0  # Padrão ao nível do mar
+
+        # 4. Executar cálculo ETo
+        service = EToProcessingService(db_session=db)
+        result = await service.process_location(
+            latitude=request.lat,
+            longitude=request.lng,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            elevation=elevation,
+            include_recomendations=False,
+            database=database,
+        )
+
+        # 5. Retornar resultados
         return {
             "status": "success",
-            "message": "ETo calculation endpoint - implementation pending",
-            "request": {
+            "data": result.get("eto_data", []),
+            "statistics": result.get("statistics", {}),
+            "source": selected_source,
+            "database_used": database,
+            "warnings": result.get("warnings", []),
+            "location": {
                 "lat": request.lat,
                 "lng": request.lng,
-                "start_date": request.start_date,
-                "end_date": request.end_date,
-                "sources": request.sources,
+                "elevation_m": elevation,
+            },
+            "period": {
+                "start": request.start_date,
+                "end": request.end_date,
             },
             "timestamp": time.time(),
         }
 
     except Exception as e:
+        import traceback
+
+        traceback.print_exc()
         raise HTTPException(
             status_code=500, detail=f"ETo calculation failed: {str(e)}"
         )

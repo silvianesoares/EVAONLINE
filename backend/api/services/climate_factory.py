@@ -9,7 +9,7 @@ from loguru import logger
 
 try:
     from .met_norway.met_norway_client import (
-        METNorwayLocationForecastClient,
+        METNorwayClient,
     )
     from .nasa_power.nasa_power_client import NASAPowerClient
     from .nws_forecast.nws_forecast_client import NWSForecastClient
@@ -22,7 +22,7 @@ try:
     from backend.infrastructure.cache.climate_cache import ClimateCacheService
 except ImportError:
     from .met_norway.met_norway_client import (
-        METNorwayLocationForecastClient,
+        METNorwayClient,
     )
     from .nasa_power.nasa_power_client import NASAPowerClient
     from .nws_forecast.nws_forecast_client import NWSForecastClient
@@ -74,12 +74,12 @@ class ClimateClientFactory:
         return client
 
     @classmethod
-    def create_met_norway(cls) -> METNorwayLocationForecastClient:
+    def create_met_norway(cls) -> METNorwayClient:
         """
         Cria cliente MET Norway com cache injetado.
         """
         cache = cls.get_cache_service()
-        client = METNorwayLocationForecastClient(cache=cache)
+        client = METNorwayClient(cache=cache)
         logger.debug("🇳🇴 METNorwayClient criado com cache injetado")
         return client
 

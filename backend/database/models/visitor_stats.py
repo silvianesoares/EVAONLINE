@@ -1,7 +1,16 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.sql import func
 
 from backend.database.connection import Base
@@ -59,13 +68,28 @@ class Visitor(Base):
         comment="ID da sessão atual (user_session_cache.session_id)",
     )
     user_id = Column(
-        Integer, nullable=True, index=True, comment="ID do usuário logado (admin_users.id)"
+        Integer,
+        nullable=True,
+        index=True,
+        comment="ID do usuário logado (admin_users.id)",
     )
-    ip_address = Column(String(45), nullable=True, index=True, comment="Endereço IP (IPv4 ou IPv6)")
-    user_agent = Column(Text, nullable=True, comment="User-Agent completo do navegador")
-    referrer = Column(Text, nullable=True, comment="URL de referência (de onde veio)")
+    ip_address = Column(
+        String(45),
+        nullable=True,
+        index=True,
+        comment="Endereço IP (IPv4 ou IPv6)",
+    )
+    user_agent = Column(
+        Text, nullable=True, comment="User-Agent completo do navegador"
+    )
+    referrer = Column(
+        Text, nullable=True, comment="URL de referência (de onde veio)"
+    )
     first_visit = Column(
-        DateTime, nullable=False, server_default=func.now(), comment="Data/hora da primeira visita"
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+        comment="Data/hora da primeira visita",
     )
     last_visit = Column(
         DateTime,
@@ -75,23 +99,57 @@ class Visitor(Base):
         comment="Data/hora da última visita",
     )
     visit_count = Column(
-        Integer, nullable=False, default=1, comment="Número total de visitas/visitas de página"
+        Integer,
+        nullable=False,
+        default=1,
+        comment="Número total de visitas/visitas de página",
     )
     is_active = Column(
-        Boolean, nullable=False, default=True, comment="Se a sessão está ativa (não expirou)"
+        Boolean,
+        nullable=False,
+        default=True,
+        comment="Se a sessão está ativa (não expirou)",
     )
-    country = Column(String(100), nullable=True, comment="País detectado por geolocalização")
-    city = Column(String(100), nullable=True, comment="Cidade detectada por geolocalização")
-    device_type = Column(String(20), nullable=True, comment="Tipo: desktop, mobile, tablet")
-    browser = Column(String(50), nullable=True, comment="Navegador: chrome, firefox, safari, etc")
-    os = Column(String(50), nullable=True, comment="SO: windows, macos, linux, android, ios")
+    country = Column(
+        String(100), nullable=True, comment="País detectado por geolocalização"
+    )
+    city = Column(
+        String(100),
+        nullable=True,
+        comment="Cidade detectada por geolocalização",
+    )
+    last_latitude = Column(
+        Float, nullable=True, comment="Última latitude registrada"
+    )
+    last_longitude = Column(
+        Float, nullable=True, comment="Última longitude registrada"
+    )
+    geolocation_accuracy = Column(
+        Float, nullable=True, comment="Precisão da geolocalização (metros)"
+    )
+    device_type = Column(
+        String(20), nullable=True, comment="Tipo: desktop, mobile, tablet"
+    )
+    browser = Column(
+        String(50),
+        nullable=True,
+        comment="Navegador: chrome, firefox, safari, etc",
+    )
+    os = Column(
+        String(50),
+        nullable=True,
+        comment="SO: windows, macos, linux, android, ios",
+    )
 
     def __repr__(self) -> str:
         try:
             vid = getattr(self, "visitor_id", "uninitialized")
             visits = getattr(self, "visit_count", 0)
             active = getattr(self, "is_active", False)
-            return f"<Visitor(id='{vid[:12]}...', visits={visits}, " f"active={active})>"
+            return (
+                f"<Visitor(id='{vid[:12]}...', visits={visits}, "
+                f"active={active})>"
+            )
         except Exception:
             return "<Visitor(uninitialized)>"
 
@@ -183,22 +241,40 @@ class VisitorStats(Base):
     __tablename__ = "visitor_stats"
 
     id = Column(
-        Integer, primary_key=True, default=1, comment="Sempre 1 - tabela com uma única linha"
+        Integer,
+        primary_key=True,
+        default=1,
+        comment="Sempre 1 - tabela com uma única linha",
     )
     total_visitors = Column(
-        Integer, nullable=False, server_default="0", comment="Total de visitantes únicos históricos"
+        Integer,
+        nullable=False,
+        server_default="0",
+        comment="Total de visitantes únicos históricos",
     )
     unique_visitors_today = Column(
-        Integer, nullable=False, server_default="0", comment="Visitantes únicos hoje"
+        Integer,
+        nullable=False,
+        server_default="0",
+        comment="Visitantes únicos hoje",
     )
     unique_visitors_week = Column(
-        Integer, nullable=False, server_default="0", comment="Visitantes únicos na semana"
+        Integer,
+        nullable=False,
+        server_default="0",
+        comment="Visitantes únicos na semana",
     )
     unique_visitors_month = Column(
-        Integer, nullable=False, server_default="0", comment="Visitantes únicos no mês"
+        Integer,
+        nullable=False,
+        server_default="0",
+        comment="Visitantes únicos no mês",
     )
     active_sessions = Column(
-        Integer, nullable=False, server_default="0", comment="Sessões ativas (últimos 30 min)"
+        Integer,
+        nullable=False,
+        server_default="0",
+        comment="Sessões ativas (últimos 30 min)",
     )
     last_sync = Column(
         DateTime,
@@ -206,11 +282,20 @@ class VisitorStats(Base):
         server_default=func.now(),
         comment="Última sincronização com visitors",
     )
-    peak_hour = Column(String(5), nullable=True, comment="Hora de pico (HH:MM)")
-    top_country = Column(String(100), nullable=True, comment="País com mais visitantes")
-    top_city = Column(String(100), nullable=True, comment="Cidade com mais visitantes")
+    peak_hour = Column(
+        String(5), nullable=True, comment="Hora de pico (HH:MM)"
+    )
+    top_country = Column(
+        String(100), nullable=True, comment="País com mais visitantes"
+    )
+    top_city = Column(
+        String(100), nullable=True, comment="Cidade com mais visitantes"
+    )
     created_at = Column(
-        DateTime, nullable=False, server_default=func.now(), comment="Data/hora de criação"
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+        comment="Data/hora de criação",
     )
     updated_at = Column(
         DateTime,
@@ -225,7 +310,10 @@ class VisitorStats(Base):
             total = getattr(self, "total_visitors", 0)
             today = getattr(self, "unique_visitors_today", 0)
             active = getattr(self, "active_sessions", 0)
-            return f"<VisitorStats(total={total}, today={today}, " f"active={active})>"
+            return (
+                f"<VisitorStats(total={total}, today={today}, "
+                f"active={active})>"
+            )
         except Exception:
             return "<VisitorStats(uninitialized)>"
 
@@ -253,7 +341,12 @@ class VisitorStats(Base):
 
 
 # Índices para performance
-Index("idx_visitor_visitor_id", Visitor.visitor_id, unique=True, postgresql_using="btree")
+Index(
+    "idx_visitor_visitor_id",
+    Visitor.visitor_id,
+    unique=True,
+    postgresql_using="btree",
+)
 
 Index("idx_visitor_session_id", Visitor.session_id, postgresql_using="btree")
 
@@ -261,7 +354,12 @@ Index("idx_visitor_last_visit", Visitor.last_visit, postgresql_using="btree")
 
 Index("idx_visitor_ip", Visitor.ip_address, postgresql_using="btree")
 
-Index("idx_visitor_active", Visitor.is_active, Visitor.last_visit, postgresql_using="btree")
+Index(
+    "idx_visitor_active",
+    Visitor.is_active,
+    Visitor.last_visit,
+    postgresql_using="btree",
+)
 
 
 __all__ = ["Visitor", "VisitorStats"]

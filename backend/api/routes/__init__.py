@@ -3,9 +3,11 @@ from fastapi import APIRouter
 from backend.api.routes.climate_sources import router as climate_sources_router
 from backend.api.routes.eto_routes import eto_router
 from backend.api.routes.health import router as health_router
+from backend.api.routes.geolocation_routes import router as geolocation_router
+from backend.api.routes.visitor_routes import router as visitor_router
 
 # ============================================================================
-# API SIMPLIFICADA - 8 endpoints essenciais
+# API SIMPLIFICADA - Endpoints essenciais
 # ============================================================================
 
 # Criar router principal
@@ -19,3 +21,9 @@ api_router.include_router(eto_router)
 
 # Climate sources discovery (1 endpoint)
 api_router.include_router(climate_sources_router)
+
+# Geolocation tracking (3 endpoints)
+api_router.include_router(geolocation_router)
+
+# Visitor counter (4 endpoints)
+api_router.include_router(visitor_router)

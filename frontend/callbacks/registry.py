@@ -27,15 +27,17 @@ def register_all_callbacks(app):
         # ✅ Callbacks da navbar (tradução PT/EN)
         from . import navbar_callbacks  # Importa para registrar os callbacks
 
-        # 🔄 Callbacks a serem reativados conforme necessário:
-        # from .eto_callbacks import register_eto_callbacks
-        # register_eto_callbacks(app)
+        # ✅ Callbacks da página ETo (com decoradores @callback)
+        from . import eto_callbacks  # Importa para registrar automaticamente
 
+        # ✅ Callbacks do contador de visitantes
+        from . import (
+            visitor_callbacks,
+        )  # Importa para registrar automaticamente
+
+        # 🔄 Callbacks a serem reativados conforme necessário:
         # from .favorites_callbacks import register_favorites_callbacks
         # register_favorites_callbacks(app)
-
-        # from .navigation_callbacks import register_navigation_callbacks
-        # register_navigation_callbacks(app)
 
         # from .cache_callbacks import register_cache_callbacks
         # register_cache_callbacks(app)

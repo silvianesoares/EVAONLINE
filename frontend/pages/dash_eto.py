@@ -2,14 +2,14 @@
 Página de cálculo ETo do ETO Calculator.
 
 Features:
-- Exibe informações completas da localização selecionada
-- Interface para cálculo de Evapotranspiração
-- Integração com sistema de cache
-- Design responsivo e intuitivo
+- Recebe coordenadas da home via URL params
+- Radio buttons "Dados Históricos" vs "Dados Atuais"
+- Formulário condicional (campos mudam conforme escolha)
+- Validações de data (min/max)
+- Botão "CALCULAR ETO" (ainda sem backend)
 """
 
 import logging
-from datetime import datetime, timedelta
 
 import dash_bootstrap_components as dbc
 from dash import dcc, html
@@ -29,11 +29,13 @@ eto_layout = html.Div(
                                 html.H1(
                                     "📊 Calculadora ETo",
                                     className="text-center mb-3",
-                                    style={"color": "#2c3e50", "fontWeight": "bold"},
+                                    style={
+                                        "color": "#2c3e50",
+                                        "fontWeight": "bold",
+                                    },
                                 ),
                                 html.P(
-                                    "Calcule a Evapotranspiração de Referência para a "
-                                    "localização selecionada",
+                                    "Calcule a Evapotranspiração de Referência (ET₀) usando o método FAO-56 Penman-Monteith",
                                     className="text-center lead text-muted mb-4",
                                 ),
                             ],
@@ -41,200 +43,285 @@ eto_layout = html.Div(
                         )
                     ]
                 ),
-                # Informações da localização (atualizadas via callback)
-                html.Div(id="eto-location-info", className="mb-4"),
-                # Card principal de cálculo
+                # Card de Localização com opções: Mapa ou Manual
                 dbc.Row(
                     [
                         dbc.Col(
                             [
-                                # Card: Configurações do Cálculo
                                 dbc.Card(
                                     [
                                         dbc.CardHeader(
                                             [
-                                                html.H5(
-                                                    "⚙️ Configurações do Cálculo", className="mb-0"
+                                                html.H6(
+                                                    "📍 Localização",
+                                                    className="mb-0",
                                                 )
                                             ]
                                         ),
                                         dbc.CardBody(
                                             [
-                                                # Seletor de Período
-                                                dbc.Row(
-                                                    [
-                                                        dbc.Col(
-                                                            [
-                                                                html.Label(
-                                                                    "Data Inicial:",
-                                                                    className="fw-bold mb-2",
-                                                                ),
-                                                                dcc.DatePickerSingle(
-                                                                    id="start-date-picker",
-                                                                    min_date_allowed=datetime(
-                                                                        1940, 1, 1
-                                                                    ),
-                                                                    max_date_allowed=datetime.now(),
-                                                                    initial_visible_month=datetime.now(),
-                                                                    date=datetime.now()
-                                                                    - timedelta(days=7),
-                                                                    display_format="DD/MM/YYYY",
-                                                                    className="mb-3",
-                                                                ),
-                                                            ],
-                                                            md=6,
-                                                        ),
-                                                        dbc.Col(
-                                                            [
-                                                                html.Label(
-                                                                    "Data Final:",
-                                                                    className="fw-bold mb-2",
-                                                                ),
-                                                                dcc.DatePickerSingle(
-                                                                    id="end-date-picker",
-                                                                    min_date_allowed=datetime(
-                                                                        1940, 1, 1
-                                                                    ),
-                                                                    max_date_allowed=datetime.now(),
-                                                                    initial_visible_month=datetime.now(),
-                                                                    date=datetime.now(),
-                                                                    display_format="DD/MM/YYYY",
-                                                                    className="mb-3",
-                                                                ),
-                                                            ],
-                                                            md=6,
-                                                        ),
-                                                    ]
+                                                # Radio: Mapa vs Manual
+                                                dbc.RadioItems(
+                                                    id="location-mode-radio",
+                                                    options=[
+                                                        {
+                                                            "label": "🗺️ Usar coordenadas do mapa",
+                                                            "value": "map",
+                                                        },
+                                                        {
+                                                            "label": "✍️ Inserir coordenadas manualmente",
+                                                            "value": "manual",
+                                                        },
+                                                    ],
+                                                    value="map",
+                                                    className="mb-3",
+                                                    inline=False,
                                                 ),
-                                                # Validação do período
-                                                html.Div(id="period-validation", className="mb-3"),
-                                                # Fonte de Dados
-                                                dbc.Row(
-                                                    [
-                                                        dbc.Col(
-                                                            [
-                                                                html.Label(
-                                                                    "Fonte de Dados Climáticos:",
-                                                                    className="fw-bold mb-2",
-                                                                ),
-                                                                dbc.Select(
-                                                                    id="data-source-select",
-                                                                    options=[
-                                                                        {
-                                                                            "label": (
-                                                                                "📡 Open-Meteo "
-                                                                                "(Recomendado)"
-                                                                            ),
-                                                                            "value": "openmeteo",
-                                                                        },
-                                                                        {
-                                                                            "label": "🌤️ NASA POWER",
-                                                                            "value": "nasa",
-                                                                        },
-                                                                        {
-                                                                            "label": "🔍 Dados Locais",
-                                                                            "value": "local",
-                                                                        },
-                                                                    ],
-                                                                    value="openmeteo",
-                                                                    className="mb-3",
-                                                                ),
-                                                            ],
-                                                            width=12,
-                                                        )
-                                                    ]
+                                                # Display textual das coordenadas (atualizado por callbacks)
+                                                html.Div(
+                                                    id="location-display",
+                                                    className="mb-3",
                                                 ),
-                                                # Badge de fonte de dados selecionada
-                                                html.Div(id="data-source-badge", className="mt-2"),
-                                                # Botão de cálculo
-                                                dbc.Button(
-                                                    "🚀 Calcular ETo",
-                                                    id="calculate-eto-btn",
-                                                    color="primary",
-                                                    size="lg",
-                                                    className="w-100",
-                                                    n_clicks=0,
+                                                # Container condicional (formulário mapa vs manual)
+                                                html.Div(
+                                                    id="location-input-container"
                                                 ),
                                             ]
                                         ),
                                     ],
-                                    className="mb-4 shadow-sm",
-                                ),
-                                # Card: Resultados do Cálculo
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            [html.H5("📈 Resultados do Cálculo", className="mb-0")]
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                dbc.Alert(
-                                                    [
-                                                        html.I(className="bi bi-info-circle me-2"),
-                                                        "Os resultados aparecerão aqui após o cálculo."
-                                                        "Certifique-se de que selecionou uma "
-                                                        "localização no mapa.",
-                                                    ],
-                                                    color="info",
-                                                    id="results-placeholder",
-                                                    className="mb-0",
-                                                ),
-                                                html.Div(id="eto-results-container"),
-                                            ]
-                                        ),
-                                    ],
-                                    className="mb-4 shadow-sm",
-                                ),
-                                # Card: Informações Técnicas
-                                dbc.Card(
-                                    [
-                                        dbc.CardHeader(
-                                            [html.H5("🔬 Informações Técnicas", className="mb-0")]
-                                        ),
-                                        dbc.CardBody(
-                                            [
-                                                html.P(
-                                                    [
-                                                        html.Strong("Método utilizado: "),
-                                                        "Penman-Monteith (FAO-56)",
-                                                    ],
-                                                    className="mb-2",
-                                                ),
-                                                html.P(
-                                                    [
-                                                        html.Strong("Parâmetros calculados: "),
-                                                        "ETo diária, temperatura, umidade, radiação solar,"
-                                                        "velocidade do vento",
-                                                    ],
-                                                    className="mb-2",
-                                                ),
-                                                html.P(
-                                                    [
-                                                        html.Strong("Precisão: "),
-                                                        "Baseada nos dados da fonte selecionada e "
-                                                        "calibração local",
-                                                    ],
-                                                    className="mb-0",
-                                                ),
-                                            ]
-                                        ),
-                                    ],
-                                    className="shadow-sm",
+                                    className="mb-4",
+                                    style={"borderLeft": "4px solid #00695c"},
                                 ),
                             ],
-                            lg=8,
-                            className="mx-auto",
+                            width=12,
                         )
                     ]
                 ),
-                # Stores específicos da página ETo
-                dcc.Store(id="eto-calculation-data"),
-                dcc.Store(id="eto-results-store"),
+                # Card de Seleção de Fonte de Dados
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardHeader(
+                                            [
+                                                html.H6(
+                                                    "🌐 Fonte de Dados Climáticos",
+                                                    className="mb-0",
+                                                )
+                                            ]
+                                        ),
+                                        dbc.CardBody(
+                                            [
+                                                html.Div(
+                                                    id="source-selection-info",
+                                                    className="mb-3",
+                                                ),
+                                                dbc.Select(
+                                                    id="climate-source-dropdown",
+                                                    placeholder="Selecione a fonte de dados...",
+                                                    disabled=True,
+                                                    className="mb-2",
+                                                ),
+                                                html.Small(
+                                                    id="source-description",
+                                                    className="text-muted",
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+                                    className="mb-4",
+                                    style={"borderLeft": "4px solid #1976d2"},
+                                ),
+                            ],
+                            width=12,
+                        )
+                    ]
+                ),
+                # Card principal de configuração e cálculo
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardHeader(
+                                            [
+                                                html.H5(
+                                                    "⚙️ Configurações do Cálculo",
+                                                    className="mb-0",
+                                                )
+                                            ]
+                                        ),
+                                        dbc.CardBody(
+                                            [
+                                                # Radio buttons: Dados Históricos vs Dados Atuais
+                                                html.Label(
+                                                    "Tipo de Dados:",
+                                                    className="fw-bold mb-3",
+                                                    style={
+                                                        "fontSize": "1.1rem"
+                                                    },
+                                                ),
+                                                dbc.RadioItems(
+                                                    id="data-type-radio",
+                                                    options=[
+                                                        {
+                                                            "label": "📅 Dados Históricos (1940 - hoje)",
+                                                            "value": "historical",
+                                                        },
+                                                        {
+                                                            "label": "🌤️ Dados Atuais (últimos 7 dias)",
+                                                            "value": "current",
+                                                        },
+                                                    ],
+                                                    value="historical",
+                                                    className="mb-4",
+                                                    inline=False,
+                                                ),
+                                                html.Hr(className="my-4"),
+                                                # Formulário condicional (muda conforme seleção)
+                                                html.Div(
+                                                    id="conditional-form"
+                                                ),
+                                                html.Hr(className="my-4"),
+                                                # Botão de cálculo
+                                                dbc.Button(
+                                                    [
+                                                        html.I(
+                                                            className="bi bi-calculator me-2"
+                                                        ),
+                                                        "CALCULAR ETO",
+                                                    ],
+                                                    id="calculate-eto-btn",
+                                                    color="success",
+                                                    size="lg",
+                                                    className="w-100",
+                                                    style={
+                                                        "fontWeight": "600",
+                                                        "fontSize": "1.1rem",
+                                                        "padding": "12px",
+                                                    },
+                                                    n_clicks=0,
+                                                ),
+                                                # Alert de validação
+                                                html.Div(
+                                                    id="validation-alert",
+                                                    className="mt-3",
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+                                    className="mb-4 shadow-sm",
+                                ),
+                            ],
+                            md=8,
+                        ),
+                        # Coluna lateral com informações
+                        dbc.Col(
+                            [
+                                # Card: Sobre o método
+                                dbc.Card(
+                                    [
+                                        dbc.CardHeader(
+                                            [
+                                                html.H6(
+                                                    "🔬 Método FAO-56",
+                                                    className="mb-0",
+                                                )
+                                            ]
+                                        ),
+                                        dbc.CardBody(
+                                            [
+                                                html.P(
+                                                    "O método Penman-Monteith FAO-56 é o padrão internacional "
+                                                    "para cálculo de evapotranspiração de referência (ET₀).",
+                                                    className="small",
+                                                ),
+                                                html.P(
+                                                    [
+                                                        html.Strong(
+                                                            "Parâmetros necessários:"
+                                                        ),
+                                                        html.Br(),
+                                                        "• Temperatura do ar",
+                                                        html.Br(),
+                                                        "• Umidade relativa",
+                                                        html.Br(),
+                                                        "• Velocidade do vento",
+                                                        html.Br(),
+                                                        "• Radiação solar",
+                                                    ],
+                                                    className="small mb-0",
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+                                    className="mb-3",
+                                ),
+                                # Card: Fontes de dados
+                                dbc.Card(
+                                    [
+                                        dbc.CardHeader(
+                                            [
+                                                html.H6(
+                                                    "📡 Fontes de Dados",
+                                                    className="mb-0",
+                                                )
+                                            ]
+                                        ),
+                                        dbc.CardBody(
+                                            [
+                                                html.P(
+                                                    [
+                                                        html.Strong(
+                                                            "Open-Meteo: "
+                                                        ),
+                                                        "Dados globais de alta resolução (recomendado)",
+                                                    ],
+                                                    className="small mb-2",
+                                                ),
+                                                html.P(
+                                                    [
+                                                        html.Strong(
+                                                            "NASA POWER: "
+                                                        ),
+                                                        "Dados históricos globais desde 1940",
+                                                    ],
+                                                    className="small mb-0",
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+                                    className="mb-3",
+                                ),
+                            ],
+                            md=4,
+                        ),
+                    ]
+                ),
+                # Card de resultados (aparece após cálculo)
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                html.Div(id="eto-results-container"),
+                            ],
+                            width=12,
+                        )
+                    ]
+                ),
+                # Store para coordenadas parseadas da URL
+                dcc.Store(id="parsed-coordinates", data=None),
             ],
-            fluid=True,
-        )
+            fluid=False,
+            className="py-4",
+        ),
     ]
 )
+
+logger.info("✅ Página ETo carregada com sucesso")
 
 
 # Funções auxiliares para a página ETo
@@ -252,7 +339,9 @@ def create_period_validation_alert(is_valid, message):
     return dbc.Alert(
         [
             html.I(className=f"{icon} me-2"),
-            html.Strong("Período " + ("válido" if is_valid else "inválido") + ": "),
+            html.Strong(
+                "Período " + ("válido" if is_valid else "inválido") + ": "
+            ),
             message,
         ],
         color=color,
@@ -270,11 +359,14 @@ def create_eto_results_card(results_data):
     """
     if not results_data:
         return dbc.Alert(
-            "Nenhum resultado disponível. Execute o cálculo primeiro.", color="warning"
+            "Nenhum resultado disponível. Execute o cálculo primeiro.",
+            color="warning",
         )
     return dbc.Card(
         [
-            dbc.CardHeader([html.H6("📊 Resultados do Cálculo ETo", className="mb-0")]),
+            dbc.CardHeader(
+                [html.H6("📊 Resultados do Cálculo ETo", className="mb-0")]
+            ),
             dbc.CardBody(
                 [
                     dbc.Row(
@@ -317,13 +409,19 @@ def create_eto_results_card(results_data):
                                     html.P(
                                         [
                                             html.Strong("Dias calculados: "),
-                                            str(results_data.get("days_count", 0)),
+                                            str(
+                                                results_data.get(
+                                                    "days_count", 0
+                                                )
+                                            ),
                                         ]
                                     ),
                                     html.P(
                                         [
                                             html.Strong("Fonte: "),
-                                            results_data.get("data_source", "N/A"),
+                                            results_data.get(
+                                                "data_source", "N/A"
+                                            ),
                                         ]
                                     ),
                                 ],
@@ -363,7 +461,8 @@ def create_calculation_error_alert(error_message):
             error_message,
             html.Br(),
             html.Small(
-                "Verifique a localização selecionada e tente novamente.", className="text-muted"
+                "Verifique a localização selecionada e tente novamente.",
+                className="text-muted",
             ),
         ],
         color="danger",

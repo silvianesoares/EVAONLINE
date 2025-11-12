@@ -28,7 +28,7 @@ from typing import Dict, Tuple
 # ==============================================================================
 
 # Data padrão de início para dados históricos (TODAS AS APIs)
-HISTORICAL_START_DATE = date(1990, 1, 1)
+HISTORICAL_START_DATE = date(1990, 1, 1)  # padrão EVAonline
 
 # Limites de dias para downloads históricos assíncronos
 HISTORICAL_MIN_DAYS = 1  # Mínimo: 1 dia

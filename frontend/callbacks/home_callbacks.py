@@ -8,7 +8,8 @@ import sys
 
 import dash_bootstrap_components as dbc
 import requests
-from dash import ALL, Input, Output, State, html
+from dash import ALL, Input, Output, State, html, callback_context
+from dash.exceptions import PreventUpdate
 from geopy.geocoders import Nominatim
 
 from ..components.world_map_leaflet import (
@@ -633,8 +634,7 @@ def create_selection_info_card(location_data):
                                 id="calculate-eto-btn",
                                 color="success",
                                 size="sm",
-                                # Redireciona para página ETo
-                                href="/eto-calculator",
+                                # href será atualizado dinamicamente com coordenadas
                             ),
                         ],
                         className="d-flex gap-2",
@@ -654,8 +654,6 @@ def create_selection_info_card(location_data):
 
 def register_layer_control_callbacks(app):
     """Registra callbacks para o controle customizado de camadas."""
-    from dash import callback_context
-
     # ✅ Importar apenas as funções que retornam listas de markers/componentes
     from ..components.world_map_leaflet import (
         load_brasil_geojson,
@@ -761,5 +759,104 @@ def register_layer_control_callbacks(app):
             piracicaba_marker = load_piracicaba_marker()
             return [piracicaba_marker] if piracicaba_marker else []
         return []
+
+    @app.callback(
+        [
+            Output("navigation-coordinates", "data"),
+            Output("url", "pathname", allow_duplicate=True),
+        ],
+        Input("calculate-eto-btn", "n_clicks"),
+        State("selected-location-data", "data"),
+        prevent_initial_call=True,
+    )
+    def navigate_to_eto_with_coords(n_clicks, location_data):
+        """
+        Navega para página ETo salvando coordenadas no Store GLOBAL.
+        Usa sessionStorage para persistir durante a sessão do navegador.
+
+        Args:
+            n_clicks: Número de cliques no botão
+            location_data: Dict com {'lat': float, 'lon': float}
+
+        Returns:
+            tuple: (coordinates_dict, pathname)
+        """
+        logger.info(
+            f"🚀 navigate_to_eto_with_coords CHAMADO! n_clicks={n_clicks}, location_data={location_data}"
+        )
+
+        if not n_clicks:
+            logger.warning("⚠️ Abortando - n_clicks vazio")
+            raise PreventUpdate
+
+        if not location_data:
+            logger.warning(
+                "⚠️ Navegando para ETo sem coordenadas (location_data vazio)"
+            )
+            return None, "/eto-calculator"
+
+        lat = location_data.get("lat")
+        lon = location_data.get("lon")
+
+        if lat is not None and lon is not None:
+            coords = {"lat": lat, "lon": lon}
+            logger.info(f"📍 Salvando coordenadas no Store: {coords}")
+            logger.info(f"🔗 Navegando para: /eto-calculator")
+            return coords, "/eto-calculator"
+
+        logger.warning("⚠️ Coordenadas inválidas, navegando sem dados")
+        return None, "/eto-calculator"
+
+    @app.callback(
+        [
+            Output("navigation-coordinates", "data", allow_duplicate=True),
+            Output("url", "pathname", allow_duplicate=True),
+        ],
+        Input({"type": "calc-eto-favorite", "index": ALL}, "n_clicks"),
+        State("favorites-data", "data"),
+        prevent_initial_call=True,
+    )
+    def navigate_to_eto_from_favorite(n_clicks_list, favorites_data):
+        """
+        Navega para ETo calculator a partir de um favorito usando Store.
+
+        Args:
+            n_clicks_list: Lista de clicks nos botões dos favoritos
+            favorites_data: Dados dos favoritos
+
+        Returns:
+            tuple: (coordinates_dict, pathname)
+        """
+        if not any(n_clicks_list) or not favorites_data:
+            raise PreventUpdate
+
+        # Encontrar qual botão foi clicado
+        ctx = callback_context
+        if not ctx.triggered:
+            raise PreventUpdate
+
+        # Extrair o índice do botão clicado
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        import json
+
+        button_dict = json.loads(button_id)
+        clicked_index = button_dict["index"]
+
+        # Buscar coordenadas do favorito
+        if clicked_index < len(favorites_data):
+            favorite = favorites_data[clicked_index]
+            lat = favorite.get("latitude")
+            lon = favorite.get("longitude")
+
+            if lat is not None and lon is not None:
+                coords = {"lat": lat, "lon": lon}
+                logger.info(
+                    f"📍 Favorito clicado - Salvando no Store: {coords}"
+                )
+                logger.info(f"🔗 Navegando para: /eto-calculator")
+                return coords, "/eto-calculator"
+
+        logger.warning("⚠️ Favorito sem coordenadas válidas")
+        raise PreventUpdate
 
     logger.info("✅ Callbacks de controle de camadas registrados")

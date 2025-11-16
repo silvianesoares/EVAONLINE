@@ -26,10 +26,10 @@ Cache Strategy:
 
 Uso no Cálculo de ETo FAO-56:
 1. **Pressão Atmosférica** (P):
-   P = 101.3 × [(293 - 0.0065 × z) / 293]^5.26
+   P = 101.3 x [(293 - 0.0065 x z) / 293]^5.26
 
-2. **Psychrometric Constant** (γ):
-   γ = 0.665 × 10^-3 × P
+2. **Psychrometric Constant** (Y):
+   Y = 0.665 x 10^-3 x P
 
 3. **Radiação Solar Extraterrestre** (Ra):
    Aumenta ~10% por 1000m de altitude

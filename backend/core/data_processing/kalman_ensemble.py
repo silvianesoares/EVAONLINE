@@ -133,7 +133,7 @@ class AdaptiveKalmanFilter:
 
     def __init__(
         self,
-        monthly_normal: Optional[Dict[str, float]] = None,
+        monthly_normal: Optional[float] = None,
         historical_std: Optional[float] = None,
         station_confidence: float = 0.8,
     ):
@@ -154,12 +154,12 @@ class AdaptiveKalmanFilter:
 
         # Varianças adaptadas ao histórico
         # Maior confiança = menor measurement_variance
-        process_var = (historical_std**2) * 0.01  # 1% do histórico
-        measurement_var = (historical_std**2) * (1 - station_confidence)
+        process_var = (self.historical_std**2) * 0.01  # 1% do histórico
+        measurement_var = (self.historical_std**2) * (1 - station_confidence)
 
         self.state = KalmanState(
             posterior_estimate=self.monthly_normal,
-            posterior_error_estimate=historical_std,
+            posterior_error_estimate=self.historical_std,
             process_variance=max(process_var, 1e-5),
             measurement_variance=max(measurement_var, 0.01),
         )
@@ -481,7 +481,7 @@ class KalmanEnsembleStrategy:
 
         # Importar aqui para evitar circular imports
         if db_session:
-            from backend.core.data_processing.station_finder import (
+            from backend.api.services.nws_stations.station_finder import (
                 StationFinder,
             )
 

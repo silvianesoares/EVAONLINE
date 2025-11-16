@@ -1,239 +1,209 @@
+# backend/api/services/climate_factory.py
 """
-Factory para criar clientes climáticos com cache injetado (Redis).
+Factory centralizada para criação de clientes climáticos
+com injeção de dependências.
 
-Fornece método centralizado para instanciar clientes de APIs climáticas
-com todas as dependências (cache Redis) corretamente injetadas.
-
-Padrões de Uso:
-- NASA POWER: Sempre usa cache injetado (dados históricos pesados)
-- MET Norway: Sempre usa cache injetado (dados regionais complexos)
-- Open-Meteo Archive/Forecast: Usa cache local em disco (arquivos grandes)
-- NWS Forecast: Cache interno (dados oficiais governamentais)
-- NWS Stations: Sempre usa cache injetado (observações tempo real)
-
-Responsabilidades:
-1. Gerenciar singleton do ClimateCacheService (Redis)
-2. Injetar dependências automaticamente em clientes
-3. Fornecer cleanup centralizado de conexões
-4. Garantir consistência na criação de clientes
+Responsabilidades principais:
+- Garantir singleton único do ClimateCacheService (Redis)
+- Injetar cache automaticamente onde necessário
+- Padronizar criação de todos os clientes climáticos
+- Fornecer cleanup seguro e centralizado (async + sync)
+- Evitar múltiplas conexões Redis ou HTTP clients desnecessários
 """
+
+from __future__ import annotations
+
+import asyncio
+from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from backend.infrastructure.cache.climate_cache import ClimateCacheService
+if TYPE_CHECKING:
+    from backend.infrastructure.cache.climate_cache import (
+        ClimateCacheService,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_climate_cache_service() -> ClimateCacheService:
+    """
+    Singleton lazy do serviço de cache Redis.
+
+    Usa @lru_cache em vez de variável de classe mutável para
+    garantir thread-safety e evitar estado global mutável.
+    """
+    from backend.infrastructure.cache.climate_cache import (
+        ClimateCacheService,
+    )
+
+    service = ClimateCacheService(prefix="climate")
+    logger.info("ClimateCacheService singleton criado (Redis)")
+    return service
 
 
 class ClimateClientFactory:
     """
-    Factory para criar clientes climáticos com dependências injetadas.
+    Factory oficial para todos os clientes climáticos do EVAonline.
 
-    Features:
-    - Singleton do serviço de cache (reutiliza conexão Redis)
-    - Injeção automática de cache em todos os clientes
-    - Método centralizado de cleanup
+    Uso recomendado em todo o projeto:
+        client = ClimateClientFactory.create_met_norway()
+        data = await client.get_daily_data(...)
     """
 
-    _cache_service: ClimateCacheService | None = None
-
-    @classmethod
-    def get_cache_service(cls) -> ClimateCacheService:
+    @staticmethod
+    def create_nasa_power():
         """
-        Retorna instância singleton do serviço de cache.
-
-        Garante que todos os clientes compartilhem a mesma
-        conexão Redis, evitando overhead de múltiplas conexões.
+        Cria cliente NASA POWER com cache Redis.
 
         Returns:
-            ClimateCacheService: Serviço de cache compartilhado
-        """
-        if cls._cache_service is None:
-            cls._cache_service = ClimateCacheService(prefix="climate")
-            logger.info("ClimateCacheService singleton criado")
-        return cls._cache_service
-
-    @classmethod
-    def create_nasa_power(cls):
-        """
-        Cria cliente NASA POWER com cache injetado.
-
-        Quando usar:
-        - Dados históricos globais (1990-presente)
-        - Períodos longos (> 30 dias)
-        - Alta confiabilidade e cobertura global
-        - Cache Redis recomendado devido ao volume de dados
-
-        Returns:
-            NASAPowerClient: Cliente configurado com cache Redis
+            Cliente para dados históricos globais (1990–hoje)
         """
         from .nasa_power.nasa_power_client import NASAPowerClient
 
-        cache = cls.get_cache_service()
-        client = NASAPowerClient(cache=cache)
-        logger.debug("NASAPowerClient criado com cache injetado")
+        client = NASAPowerClient(cache=get_climate_cache_service())
+        logger.debug("NASAPowerClient criado com cache Redis")
         return client
 
-    @classmethod
-    def create_met_norway(cls):
+    @staticmethod
+    def create_met_norway():
         """
-        Cria cliente MET Norway com cache injetado.
-
-        Quando usar:
-        - Região Nórdica: Resolução 1km, radar, precipitação alta qualidade
-        - Global: Temperatura e umidade apenas (9km ECMWF)
-        - Previsões até 5 dias
-        - Cache Redis recomendado para dados regionais complexos
+        Cria cliente MET Norway com cache Redis.
 
         Returns:
-            METNorwayClient: Cliente configurado com cache Redis
+            Cliente para região nórdica (1km) e forecast global (9km)
         """
         from .met_norway.met_norway_client import METNorwayClient
 
-        cache = cls.get_cache_service()
-        client = METNorwayClient(cache=cache)
-        logger.debug("🇳🇴 METNorwayClient criado com cache injetado")
+        client = METNorwayClient(cache=get_climate_cache_service())
+        logger.debug("METNorwayClient criado com cache Redis")
         return client
 
-    @classmethod
-    def create_nws(cls):
+    @staticmethod
+    def create_nws():
         """
-        Cria cliente NWS (National Weather Service).
-
-        Quando usar:
-        - Apenas coordenadas nos EUA Continental
-        - Previsões oficiais NOAA até 5 dias
-        - Observações tempo real de estações
-        - Cache interno (não precisa Redis)
-
-        Nota: NWS usa cache interno próprio, não precisa injeção.
+        Cria cliente NWS Forecast com cache interno.
 
         Returns:
-            NWSForecastClient: Cliente com cache interno
+            Cliente para previsão oficial NOAA (EUA continental apenas)
         """
         from .nws_forecast.nws_forecast_client import NWSForecastClient
 
-        client = NWSForecastClient()
-        logger.debug("🇺🇸 NWSForecastClient criado")
+        client = NWSForecastClient()  # Cache interno próprio
+        logger.debug("NWSForecastClient criado (cache interno)")
         return client
 
-    @classmethod
-    def create_nws_stations(cls):
+    @staticmethod
+    def create_nws_stations():
         """
-        Cria cliente NWS Stations com cache injetado.
-
-        Quando usar:
-        - Observações tempo real de estações meteorológicas
-        - Apenas coordenadas nos EUA Continental
-        - Dados atuais (últimas 24h)
-        - Cache Redis recomendado para dados tempo real
+        Cria cliente NWS Stations com cache Redis.
 
         Returns:
-            NWSStationsClient: Cliente configurado com cache Redis
+            Cliente para observações tempo real (EUA apenas)
         """
         from .nws_stations.nws_stations_client import NWSStationsClient
 
-        cache = cls.get_cache_service()
-        client = NWSStationsClient(cache=cache)
-        logger.debug("🇺🇸 NWSStationsClient criado com cache injetado")
+        client = NWSStationsClient(cache=get_climate_cache_service())
+        logger.debug("NWSStationsClient criado com cache Redis")
         return client
 
-    @classmethod
-    def create_openmeteo(cls):
-        """
-        Cria cliente Open-Meteo Forecast (padrão para compatibilidade).
-
-        Quando usar:
-        - Dados globais recentes + previsão (hoje-30d até hoje+5d)
-        - Boa qualidade geral, cobertura mundial
-        - Cache local em disco recomendado
-
-        Returns:
-            OpenMeteoForecastClient: Cliente com cache local
-        """
-        return cls.create_openmeteo_forecast()
-
-    @classmethod
-    def create_openmeteo_archive(
-        cls,
-        cache_dir: str = ".cache",
-    ):
-        """
-        Cria cliente Open-Meteo Archive.
-
-        Quando usar:
-        - Dados históricos globais (1990-presente)
-        - Períodos específicos no passado
-        - Cache local em disco recomendado para arquivos grandes
-
-        Args:
-            cache_dir: Diretório para cache local
-
-        Returns:
-            OpenMeteoArchiveClient: Cliente com cache local
-        """
-        from .openmeteo_archive.openmeteo_archive_client import (
-            OpenMeteoArchiveClient,
-        )
-
-        client = OpenMeteoArchiveClient(cache_dir=cache_dir)
-        logger.debug("OpenMeteoArchiveClient criado (1940-2025)")
-        return client
-
-    @classmethod
+    @staticmethod
     def create_openmeteo_forecast(
-        cls,
-        cache_dir: str = ".cache",
+        cache_dir: str = ".cache/openmeteo_forecast",
     ):
         """
-        Cria cliente Open-Meteo Forecast.
-
-        Quando usar:
-        - Dados recentes + previsão global (hoje-30d até hoje+5d)
-        - Melhor opção para cobertura mundial
-        - Cache local em disco recomendado
+        Cria cliente Open-Meteo Forecast com cache local.
 
         Args:
-            cache_dir: Diretório para cache local
+            cache_dir: Diretório para cache em disco
 
         Returns:
-            OpenMeteoForecastClient: Cliente com cache local
+            Cliente para dados recentes + previsão (-30d a +5d)
         """
         from .openmeteo_forecast.openmeteo_forecast_client import (
             OpenMeteoForecastClient,
         )
 
         client = OpenMeteoForecastClient(cache_dir=cache_dir)
-        logger.debug("OpenMeteoForecastClient criado (-30d a +5d)")
+        logger.debug(
+            "OpenMeteoForecastClient criado (cache local: {})", cache_dir
+        )
         return client
 
-    @classmethod
-    async def close_all(cls):
+    @staticmethod
+    def create_openmeteo_archive(
+        cache_dir: str = ".cache/openmeteo_archive",
+    ):
         """
-        Fecha todas as conexões abertas (Redis, HTTP clients).
-        """
-        # Fechar Redis
-        if cls._cache_service and cls._cache_service.redis:
-            await cls._cache_service.redis.close()
-            logger.info("ClimateCacheService Redis connection closed")
-            cls._cache_service = None
+        Cria cliente Open-Meteo Archive com cache local.
 
-        # CORREÇÃO: Adicionar cleanup de HTTP clients
-        # Nota: HTTP clients são criados por request, não mantidos globalmente
-        # Se necessário, implementar cleanup específico nos clients individuais
-        logger.info("ClimateClientFactory cleanup completed")
+        Args:
+            cache_dir: Diretório para cache em disco
+
+        Returns:
+            Cliente para dados históricos (1940–hoje-2d)
+        """
+        from .openmeteo_archive.openmeteo_archive_client import (
+            OpenMeteoArchiveClient,
+        )
+
+        client = OpenMeteoArchiveClient(cache_dir=cache_dir)
+        logger.debug(
+            "OpenMeteoArchiveClient criado (cache local: {})", cache_dir
+        )
+        return client
+
+    @staticmethod
+    def create_openmeteo(cache_dir: str = ".cache/openmeteo_forecast"):
+        """
+        Alias mantido por compatibilidade com código antigo.
+
+        Sempre retorna o Forecast (o mais usado no dashboard).
+        """
+        return ClimateClientFactory.create_openmeteo_forecast(cache_dir)
 
     @classmethod
-    def close_all_sync(cls):
-        """Versão síncrona para contexts não-async."""
-        import asyncio
+    async def close_all(cls) -> None:
+        """
+        Fecha TODAS as conexões abertas de forma segura.
 
+        Chamado no shutdown da aplicação (FastAPI lifespan,
+        Celery worker, etc).
+        """
+        # Fecha Redis (única conexão global)
+        cache_service = get_climate_cache_service()
+        if hasattr(cache_service, "redis") and cache_service.redis is not None:
+            try:
+                await cache_service.redis.close()
+                logger.info(
+                    "Conexão Redis (ClimateCacheService) "
+                    "fechada com sucesso"
+                )
+            except Exception as e:
+                logger.error(f"Erro ao fechar Redis: {e}")
+
+        # Limpa o singleton (importante para testes e reinícios)
+        get_climate_cache_service.cache_clear()
+
+        # Nota: httpx.AsyncClient é criado por request
+        # cada cliente já tem seu próprio .aclose() se necessário
+        logger.info("ClimateClientFactory: cleanup completo")
+
+    @classmethod
+    def close_all_sync(cls) -> None:
+        """
+        Versão síncrona segura para contextos não-async.
+
+        Para uso em scripts, testes, Celery sync tasks.
+        """
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Já está rodando, criar task
-                asyncio.create_task(cls.close_all())
-            else:
-                # Rodar diretamente
-                loop.run_until_complete(cls.close_all())
+            loop = asyncio.get_running_loop()
+            # Loop já rodando: cria task e NÃO aguarda
+            # (impossível await em contexto sync)
+            task = loop.create_task(cls.close_all())
+            logger.debug(
+                "Cleanup agendado como task em loop existente: %s", task
+            )
         except RuntimeError:
-            # Novo loop se necessário
+            # Sem loop: cria temporário e executa completamente
             asyncio.run(cls.close_all())

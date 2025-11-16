@@ -170,9 +170,12 @@ class OpenMeteoForecastClient:
             cached_data = await self.cache.get(cache_key)
 
             if cached_data:
+                days_cached = len(
+                    cached_data.get("climate_data", {}).get("dates", [])
+                )
                 logger.info(
                     f"✅ Cache HIT (Redis): OpenMeteo Forecast "
-                    f"({lat:.4f}, {lng:.4f}) - {len(cached_data.get('climate_data', {}).get('dates', []))} days cached"
+                    f"({lat:.4f}, {lng:.4f}) - {days_cached} days cached"
                 )
                 return cached_data
 

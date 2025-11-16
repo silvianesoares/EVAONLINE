@@ -67,7 +67,7 @@ class OpenMeteoForecastSyncAdapter:
             f"-25d to +5d = 30d total)"
         )
 
-    def get_data_sync(
+    def get_daily_data_sync(
         self,
         lat: float,
         lon: float,
@@ -76,6 +76,23 @@ class OpenMeteoForecastSyncAdapter:
     ) -> List[Dict[str, Any]]:
         """
         Baixa dados recentes/futuros de forma SÍNCRONA.
+
+        Args:
+            lat: Latitude (-90 a 90)
+            lon: Longitude (-180 a 180)
+            start_date: Data inicial (str ou datetime)
+            end_date: Data final (str ou datetime)
+
+        Returns:
+            Lista de dicionários com dados diários
+
+        Example:
+            >>> adapter = OpenMeteoForecastSyncAdapter()
+            >>> data = adapter.get_daily_data_sync(
+            ...     lat=-15.7939, lon=-47.8828,
+            ...     start_date='2024-12-01',
+            ...     end_date='2024-12-07'
+            ... )
         """
         # Convert strings to datetime if needed
         if isinstance(start_date, str):

@@ -12,7 +12,7 @@ import pytest
 import pandas as pd
 from datetime import datetime, timedelta
 
-from backend.core.data_processing.data_download import (
+from backend.api.services.data_download import (
     download_weather_data,
 )
 

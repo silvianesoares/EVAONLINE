@@ -7,11 +7,13 @@ eliminando duplicação de código em múltiplos módulos.
 SINGLE SOURCE OF TRUTH para:
 - Detecção de coordenadas USA
 - Detecção de coordenadas Nordic (MET Norway 1km)
+- Detecção de coordenadas Brazil (validações rigorosas)
 - Detecção de coordenadas Global
 
 Bounding Boxes:
 - USA Continental: -125°W a -66°W, 24°N a 49°N (NWS coverage)
 - Nordic Region: 4°E a 31°E, 54°N a 71.5°N (MET Norway 1km)
+- Brazil: -74°W a -34°W, -34°S a 5°N (Xavier et al. 2016)
 - Global: Qualquer coordenada dentro (-180, -90) a (180, 90)
 
 Uso:
@@ -23,15 +25,19 @@ Uso:
     elif GeographicUtils.is_in_nordic(lat, lon):
         # Use MET Norway com precipitação de alta qualidade
         pass
+    elif GeographicUtils.is_in_brazil(lat, lon):
+        # Use validações Brazil-specific
+        pass
     else:
         # Use Open-Meteo ou NASA POWER (global)
         pass
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 from loguru import logger
 from typing import Literal
 from functools import wraps
+import inspect
 
 
 class GeographicUtils:
@@ -70,6 +76,19 @@ class GeographicUtils:
         - Atualizações: A cada hora (vs 4x/dia global)
         - Precipitação: Radar + crowdsourced (Netatmo)
         - Pós-processamento: Extensivo com bias correction
+    """
+
+    BRAZIL_BBOX = (-74.0, -34.0, -34.0, 5.0)
+    """
+    Bounding box Brasil (Xavier et al. 2016).
+
+    Cobertura:
+        Longitude: -74°W (Fronteira Oeste) a -34°W (Costa Leste)
+        Latitude: -34°S (Sul) a 5°N (Norte)
+
+    Descrição:
+        Limites continentais do Brasil, incluindo todas as regiões.
+        Usado para validações específicas e otimização de fontes.
     """
 
     GLOBAL_BBOX = (-180.0, -90.0, 180.0, 90.0)
@@ -138,9 +157,40 @@ class GeographicUtils:
         return in_nordic
 
     @staticmethod
+    def is_in_brazil(lat: float, lon: float) -> bool:
+        """
+        Verifica se coordenadas estão no Brasil.
+
+        Usa bounding box: (-74.0, -34.0, -34.0, 5.0)
+        Cobertura: Território continental brasileiro
+
+        Args:
+            lat: Latitude (-90 a 90)
+            lon: Longitude (-180 a 180)
+
+        Returns:
+            bool: True se dentro do bbox Brasil, False caso contrário
+
+        Exemplo:
+            if GeographicUtils.is_in_brazil(-23.5505, -46.6333):
+                # São Paulo, Brasil - dentro do território
+                pass
+        """
+        lon_min, lat_min, lon_max, lat_max = GeographicUtils.BRAZIL_BBOX
+        in_brazil = (lon_min <= lon <= lon_max) and (lat_min <= lat <= lat_max)
+
+        if in_brazil:
+            logger.debug(
+                f"✅ Coordenadas ({lat:.4f}, {lon:.4f}) " f"na região BRASIL"
+            )
+
+        return in_brazil
+
+    @staticmethod
     def is_valid_coordinate(lat: float, lon: float) -> bool:
         """
-        Verifica se coordenadas são válidas (dentro de (-180, -90) a (180, 90)).
+        Verifica se coordenadas são válidas (dentro de (-180, -90) a
+        (180, 90)).
 
         Args:
             lat: Latitude
@@ -181,16 +231,17 @@ class GeographicUtils:
     @staticmethod
     def get_region(
         lat: float, lon: float
-    ) -> Literal["usa", "nordic", "global"]:
+    ) -> Literal["usa", "nordic", "brazil", "global"]:
         """
-        Detecta região geográfica com prioridade: USA > Nordic > Global.
+        Detecta região geográfica com prioridade:
+        USA > Nordic > Brazil > Global.
 
         Args:
             lat: Latitude
             lon: Longitude
 
         Returns:
-            str: Uma de "usa", "nordic", "global"
+            str: Uma de "usa", "nordic", "brazil", "global"
 
         Exemplo:
             region = GeographicUtils.get_region(39.7392, -104.9903)
@@ -200,12 +251,14 @@ class GeographicUtils:
             # Retorna: "nordic"
 
             region = GeographicUtils.get_region(-23.5505, -46.6333)
-            # Retorna: "global"
+            # Retorna: "brazil"
         """
         if GeographicUtils.is_in_usa(lat, lon):
             return "usa"
         elif GeographicUtils.is_in_nordic(lat, lon):
             return "nordic"
+        elif GeographicUtils.is_in_brazil(lat, lon):
+            return "brazil"
         else:
             return "global"
 
@@ -213,7 +266,7 @@ class GeographicUtils:
     def get_recommended_sources(lat: float, lon: float) -> list[str]:
         """
         Retorna lista de fontes climáticas recomendadas por região,
-        em ordem de prioridade.
+        em ordem de prioridade. Padronizado para forecast (5 dias).
 
         Args:
             lat: Latitude
@@ -227,49 +280,61 @@ class GeographicUtils:
                 1. nws_forecast (previsão alta qualidade)
                 2. nws_stations (observações tempo real)
                 3. openmeteo_forecast (fallback global)
-                4. nasa_power (fallback histórico)
+                4. openmeteo_archive (histórico)
+                5. nasa_power (fallback universal)
 
             Nordic:
                 1. met_norway (previsão 1km com radar)
                 2. openmeteo_forecast (fallback global)
-                3. nasa_power (histórico)
+                3. openmeteo_archive (histórico)
+                4. nasa_power (fallback universal)
+
+            Brazil:
+                1. openmeteo_forecast (melhor global para BR)
+                2. nasa_power (histórico validado)
+                3. openmeteo_archive (histórico)
 
             Global:
-                1. openmeteo_forecast (recentrecent+previsão global)
-                2. met_norway (previsão global, sem precipitação)
-                3. nasa_power (histórico)
+                1. openmeteo_forecast (melhor global)
+                2. openmeteo_archive (histórico)
+                3. nasa_power (fallback universal)
 
         Exemplo:
             sources = GeographicUtils.get_recommended_sources(
                 39.7392, -104.9903
             )
-            # Retorna: ["nws_forecast", "nws_stations", "openmeteo_forecast",
-            #           "nasa_power"]
+            # Retorna: ["nws_forecast", "nws_stations",
+            #           "openmeteo_forecast", ...]
         """
         region = GeographicUtils.get_region(lat, lon)
 
-        if region == "usa":
-            return [
+        # Fontes base comuns (evita repetição)
+        base_sources = [
+            "openmeteo_forecast",  # Forecast global (5 dias)
+            "openmeteo_archive",  # Histórico fallback
+            "nasa_power",  # Universal
+        ]
+
+        # Mapeamento região -> fontes prioritárias
+        region_sources = {
+            "usa": [
                 "nws_forecast",  # Melhor para previsão
                 "nws_stations",  # Observações tempo real
-                "openmeteo_forecast",  # Fallback
-                "openmeteo_archive",  # Histórico
-                "nasa_power",  # Fallback universal
             ]
-        elif region == "nordic":
-            return [
+            + base_sources,
+            "nordic": [
                 "met_norway",  # Melhor: 1km + radar
-                "openmeteo_forecast",  # Fallback
-                "openmeteo_archive",  # Histórico
-                "nasa_power",  # Fallback universal
             ]
-        else:  # global
-            return [
+            + base_sources,
+            "brazil": [
+                # Otimizado para Brasil: skip MET (precip baixa qualidade)
                 "openmeteo_forecast",  # Melhor global
-                "met_norway",  # Previsão global (sem precip)
+                "nasa_power",  # Histórico validado
                 "openmeteo_archive",  # Histórico
-                "nasa_power",  # Fallback universal
-            ]
+            ],
+        }
+
+        return region_sources.get(region, base_sources)
 
 
 class TimezoneUtils:
@@ -281,7 +346,7 @@ class TimezoneUtils:
     """
 
     @staticmethod
-    def ensure_naive(dt) -> "datetime":
+    def ensure_naive(dt) -> datetime:
         """
         Converte datetime para naive (sem timezone).
 
@@ -291,14 +356,14 @@ class TimezoneUtils:
         Returns:
             Datetime naive (sem timezone)
         """
-        from datetime import datetime
-
-        if isinstance(dt, datetime) and dt.tzinfo is not None:
+        if not isinstance(dt, datetime):
+            raise TypeError("dt must be a datetime instance")
+        if dt.tzinfo is not None:
             return dt.replace(tzinfo=None)
         return dt
 
     @staticmethod
-    def ensure_utc(dt) -> "datetime":
+    def ensure_utc(dt) -> datetime:
         """
         Converte datetime para UTC timezone-aware.
 
@@ -308,10 +373,29 @@ class TimezoneUtils:
         Returns:
             Datetime UTC timezone-aware
         """
-        if isinstance(dt, datetime):
-            if dt.tzinfo is None:
-                return dt.replace(tzinfo=timezone.utc)
-            return dt.astimezone(timezone.utc)
+        if not isinstance(dt, datetime):
+            raise TypeError("dt must be a datetime instance")
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    @staticmethod
+    def make_aware(dt, tz=None) -> datetime:
+        """
+        Converte datetime naive para timezone-aware.
+
+        Args:
+            dt: Datetime possivelmente naive
+            tz: Timezone (default: UTC)
+
+        Returns:
+            Datetime timezone-aware
+        """
+        if not isinstance(dt, datetime):
+            raise TypeError("dt must be a datetime instance")
+        if dt.tzinfo is None:
+            target_tz = tz or timezone.utc
+            return dt.replace(tzinfo=target_tz)
         return dt
 
     @staticmethod
@@ -327,7 +411,10 @@ class TimezoneUtils:
         Returns:
             Resultado da comparação
         """
-        from datetime import datetime
+        if not isinstance(dt1, (datetime, date)) or not isinstance(
+            dt2, (datetime, date)
+        ):
+            raise TypeError("dt1 and dt2 must be datetime or date instances")
 
         date1 = dt1.date() if isinstance(dt1, datetime) else dt1
         date2 = dt2.date() if isinstance(dt2, datetime) else dt2
@@ -351,7 +438,7 @@ def validate_coordinates(func):
     Decorador para validar coordenadas antes de executar função.
 
     Valida que lat/lon são floats válidos dentro de (-180, -90) a (180, 90).
-    Levanta ValueError se inválidas.
+    Levanta ValueError se inválidas. Usa inspect para parsing robusto.
 
     Uso:
         @validate_coordinates
@@ -362,19 +449,43 @@ def validate_coordinates(func):
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        # Extrair lat/lon dos argumentos
-        if len(args) >= 3:  # self, lat, lon
-            lat, lon = args[1], args[2]
-        elif "lat" in kwargs and "lon" in kwargs:
-            lat, lon = kwargs["lat"], kwargs["lon"]
+        # Parsing robusto usando inspect.signature
+        sig = inspect.signature(func)
+        try:
+            bound = sig.bind(*args, **kwargs)
+            bound.apply_defaults()
+        except TypeError:
+            # Fallback para args posicionais se bind falhar
+            if len(args) >= 2:
+                lat, lon = args[-2], args[-1]
+            elif "lat" in kwargs and "lon" in kwargs:
+                lat = kwargs["lat"]
+                lon = kwargs["lon"]
+            else:
+                raise ValueError("Function must provide 'lat' and 'lon'")
         else:
-            raise ValueError("Function must have 'lat' and 'lon' parameters")
+            # Extrai lat/lon de forma robusta (prioriza kwargs nomeados)
+            lat = bound.arguments.get("lat")
+            lon = bound.arguments.get("lon")
+            if lat is None or lon is None:
+                # Fallback para args posicionais
+                if len(args) >= 2:
+                    lat, lon = args[-2], args[-1]
+                else:
+                    raise ValueError("Function must provide 'lat' and 'lon'")
+
+        # Converter para float se necessário
+        try:
+            lat = float(lat)
+            lon = float(lon)
+        except (ValueError, TypeError):
+            raise ValueError("lat and lon must be numeric")
 
         # Validar coordenadas
         if not GeographicUtils.is_valid_coordinate(lat, lon):
             raise ValueError(
                 f"Invalid coordinates: lat={lat}, lon={lon}. "
-                "Must be within (-180, -90) to (180, 90)"
+                "Must be within lon (-180 to 180), lat (-90 to 90)"
             )
 
         return func(*args, **kwargs)

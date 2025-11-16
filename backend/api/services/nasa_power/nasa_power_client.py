@@ -29,7 +29,8 @@ IMPORTANTE:
 - Sempre usar community='ag' para dados agroclimáticos
 
 7 VARIÁVEIS DIÁRIAS DISPONÍVEIS:
-1. ALLSKY_SFC_SW_DWN: CERES SYN1deg All Sky Surface Shortwave Downward Irradiance (MJ/m^2/day)
+1. ALLSKY_SFC_SW_DWN: CERES SYN1deg All Sky Surface Shortwave
+   Downward Irradiance (MJ/m^2/day)
 Spatial Resolution: 1 x 1 Degrees
 
 2. T2M: MERRA-2 Temperature at 2 Meters (C)

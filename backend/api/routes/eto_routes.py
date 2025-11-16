@@ -20,6 +20,11 @@ from backend.api.services.climate_source_availability import (
 )
 from backend.api.services.climate_source_manager import ClimateSourceManager
 
+# Importar task Celery para cálculos assíncronos
+from backend.infrastructure.celery.tasks.eto_calculation import (
+    calculate_eto_task,
+)
+
 # Mapeamento de period_type para OperationMode
 # Centraliza conversão de strings antigas para novo enum
 OPERATION_MODE_MAPPING = {
@@ -78,24 +83,34 @@ async def calculate_eto(
     request: EToCalculationRequest, db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """
-    ✅ Cálculo ETo principal (configurável).
+    🚀 Cálculo ETo assíncrono com progresso em tempo real.
+
+    Inicia tarefa Celery e retorna task_id para monitoramento via WebSocket.
 
     Suporta:
     - Múltiplas fontes de dados
     - Auto-detecção de melhor fonte
     - Fusão de dados (Kalman)
     - Cache automático
+    - Progresso em tempo real via WebSocket
 
     Modos de operação (period_type):
     - historical_email: 1-90 dias (apenas NASA POWER e OpenMeteo Archive)
     - dashboard_current: 7-30 dias (todas as APIs disponíveis)
     - dashboard_forecast: hoje até hoje+5d (apenas APIs de previsão)
+
+    Resposta:
+    {
+        "status": "accepted",
+        "task_id": "abc-123-def",
+        "websocket_url": "/ws/task_status/abc-123-def",
+        "message": "Cálculo iniciado. Use WebSocket para progresso.",
+        "estimated_duration_seconds": "5-30"
+    }
+
+    Monitore progresso: WebSocket /ws/task_status/{task_id}
     """
     try:
-        from backend.core.eto_calculation.eto_services import (
-            EToProcessingService,
-        )
-
         # 0. Normalizar period_type para OperationMode
         period_type_str = (request.period_type or "dashboard_current").lower()
 
@@ -187,37 +202,43 @@ async def calculate_eto(
                 f"será obtida via API"
             )
 
-        # 5. Executar cálculo ETo
-        service = EToProcessingService(db_session=db)
-        result = await service.process_location(
-            latitude=request.lat,
-            longitude=request.lng,
+        # 5. Iniciar cálculo ETo assíncrono (Celery task)
+        # Em vez de processar sincronamente, delegar para worker
+        task = calculate_eto_task.delay(
+            lat=request.lat,
+            lon=request.lng,
             start_date=request.start_date,
             end_date=request.end_date,
+            sources=[selected_source],  # Lista de fontes
             elevation=elevation,
-            include_recomendations=False,
-            database=selected_source,
+            mode=operation_mode.value,  # String do modo
         )
 
-        # 6. Retornar resultados
+        task_id = task.id
+        logger.info(
+            f"✅ Task ETo iniciada: {task_id} para "
+            f"({request.lat}, {request.lng}) - Fonte: {selected_source}"
+        )
+
+        # 6. Retornar task_id para monitoramento via WebSocket
         return {
-            "status": "success",
-            "data": result.get("eto_data", []),
-            "statistics": result.get("statistics", {}),
+            "status": "accepted",
+            "task_id": task_id,
+            "message": (
+                "Cálculo ETo iniciado. Use WebSocket "
+                "para acompanhar progresso."
+            ),
+            "websocket_url": f"/ws/task_status/{task_id}",
             "source": selected_source,
             "source_info": source_info,
             "operation_mode": operation_mode.value,
-            "warnings": result.get("warnings", []),
             "location": {
                 "lat": request.lat,
                 "lng": request.lng,
                 "elevation_m": elevation,
             },
-            "period": {
-                "start": request.start_date,
-                "end": request.end_date,
-            },
-            "timestamp": time.time(),
+            "estimated_duration_seconds": "5-30",
+            # Estimativa baseada no período
         }
 
     except ValueError as ve:

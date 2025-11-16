@@ -85,6 +85,13 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # ✅ Health check para monitoramento
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - evaonline-network
 
@@ -119,6 +126,13 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # ✅ Health check para desenvolvimento
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - evaonline-network
     profiles: ["dev"]
@@ -247,6 +261,54 @@ services:
     restart: unless-stopped
     networks:
       - evaonline-network
+
+  # =====================================================
+  # Celery Worker - ETo Calculations (CPU-intensive)
+  # =====================================================
+  celery-worker-eto:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: evaonline-celery-worker-eto
+    environment:
+      - SERVICE=worker-eto
+      - ENVIRONMENT=production
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-evaonline}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-evaonline}
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
+      # 🔥 Worker especializado: apenas tarefas ETo
+      - CELERY_QUEUES=eto
+      - CELERY_CONCURRENCY=2 # 🔥 Limitado para evitar sobrecarga
+      - CELERY_PREFETCH_MULTIPLIER=1
+      - CELERY_TASK_ROUTES={"backend.infrastructure.celery.tasks.eto_calculation.calculate_eto_task":{"queue":"eto"}}
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - evaonline-network
+    # 🔥 Escalável: pode ter múltiplas instâncias
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
 
   # =====================================================
   # Flower - Celery Monitoring

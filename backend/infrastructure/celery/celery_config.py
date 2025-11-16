@@ -100,16 +100,17 @@ celery_app.conf.update(
     # Rotas e filas
     task_default_queue="general",
     task_routes={
+        "backend.infrastructure.celery.tasks.eto_calculation."
+        "calculate_eto_task": {"queue": "eto"},
         "backend.core.eto_calculation.*": {"queue": "eto_processing"},
-        "backend.core.data_processing.data_download.*": {
-            "queue": "data_download"
-        },
+        "backend.api.services.data_download.*": {"queue": "data_download"},
         "backend.api.services.openmeteo.*": {"queue": "elevation"},
         # REMOVIDO: backend.core.data_processing.data_fusion.*
         # (arquivo deletado em FASE 1-2)
     },
     task_queues=(
         Queue("general"),
+        Queue("eto", routing_key="eto.#"),
         Queue("eto_processing"),
         Queue("data_download"),
         Queue("data_processing"),
@@ -187,7 +188,7 @@ celery_app.autodiscover_tasks(
         "backend.infrastructure.cache.climate_tasks",
         "backend.infrastructure.celery.tasks",
         "backend.core.eto_calculation",
-        "backend.core.data_processing.data_download",
+        "backend.api.services.data_download",
         "backend.api.services.openmeteo",
     ]
 )

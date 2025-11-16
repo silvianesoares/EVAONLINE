@@ -21,7 +21,7 @@ Licença: CC-BY 4.0 - Exibir em todas as visualizações com dados MET Norway
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from loguru import logger
@@ -51,7 +51,18 @@ class METNorwaySyncAdapter:
         """
         self.config = config or METNorwayConfig()
         self.cache = cache
+        self._client: METNorwayClient | None = (
+            None  # Pool simples para reutilização
+        )
         logger.info("🌍 METNorwaySyncAdapter initialized (GLOBAL)")
+
+    async def _get_client(self) -> METNorwayClient:
+        """Get or create client from pool."""
+        if self._client is None:
+            self._client = METNorwayClient(
+                config=self.config, cache=self.cache
+            )
+        return self._client
 
     def get_daily_data_sync(
         self,
@@ -59,40 +70,64 @@ class METNorwaySyncAdapter:
         lon: float,
         start_date: datetime,
         end_date: datetime,
+        altitude: float | None = None,
         timezone: str | None = None,
     ) -> list[METNorwayDailyData]:
         """
-        Busca dados DIÁRIOS de forma síncrona com estratégia regional.
-        IMPORTANTE - ESTRATÉGIA REGIONAL:
-        - NORDIC Region (NO/SE/FI/DK/Baltics):
-          * Variables: temp_max, temp_min, temp_mean, humidity_mean,
-                       precipitation_sum (HIGH QUALITY)
-          * Quality: 1km resolution, radar + Netatmo bias correction
+        Busca dados DIÁRIOS de forma SÍNCRONA (compatível com Celery/sync code).
 
-        - GLOBAL Region (rest of world):
-          * Variables: temp_max, temp_min, temp_mean, humidity_mean
-                       (NO precipitation - use Open-Meteo instead)
-          * Quality: 9km ECMWF, minimal post-processing
+        Args:
+            lat: Latitude (-90 a 90)
+            lon: Longitude (-180 a 180)
+            start_date: Data inicial
+            end_date: Data final
+            altitude: Elevação em metros (opcional)
+            timezone: Fuso horário (opcional)
 
-        O cliente interno detecta automaticamente a região e filtra
-        as variáveis apropriadas. A precipitação só é retornada para
-        a região Nordic onde tem alta qualidade com radar.
+        Returns:
+            Lista de dados diários
+
+        Example:
+            >>> adapter = METNorwaySyncAdapter()
+            >>> data = adapter.get_daily_data_sync(
+            ...     lat=60.0, lon=10.0,
+            ...     start_date=datetime(2024, 1, 1),
+            ...     end_date=datetime(2024, 1, 7)
+            ... )
         """
-        logger.debug(
-            f"🌍 MET Norway Sync request (GLOBAL): "
-            f"lat={lat}, lon={lon}, "
-            f"dates={start_date.date()} to {end_date.date()}"
-        )
-
-        # Executa função assíncrona de forma síncrona
         return asyncio.run(
             self._async_get_daily_data(
                 lat=lat,
                 lon=lon,
                 start_date=start_date,
                 end_date=end_date,
+                altitude=altitude,
                 timezone=timezone,
             )
+        )
+
+    async def get_daily_data(
+        self,
+        lat: float,
+        lon: float,
+        start_date: datetime,
+        end_date: datetime,
+        altitude: float | None = None,
+        timezone: str | None = None,
+    ) -> list[METNorwayDailyData]:
+        """
+        Busca dados DIÁRIOS de forma ASSÍNCRONA (para FastAPI/Celery async tasks).
+
+        Use este método em contextos assíncronos.
+        Para código síncrono, use get_daily_data_sync().
+        """
+        return await self._async_get_daily_data(
+            lat=lat,
+            lon=lon,
+            start_date=start_date,
+            end_date=end_date,
+            altitude=altitude,
+            timezone=timezone,
         )
 
     async def _async_get_daily_data(
@@ -101,28 +136,59 @@ class METNorwaySyncAdapter:
         lon: float,
         start_date: datetime,
         end_date: datetime,
+        altitude: float | None = None,
         timezone: str | None = None,
     ) -> list[METNorwayDailyData]:
         """
-        Método assíncrono interno (GLOBAL com estratégia regional).
+        Busca dados DIÁRIOS de forma assíncrona.
+
+        USO:
+            # Em Celery task (async def)
+            adapter = METNorwaySyncAdapter()
+            data = await adapter.get_daily_data(...)
+
+            # Em código síncrono (se necessário)
+            data = asyncio.run(adapter.get_daily_data(...))
         """
-        client = METNorwayClient(config=self.config, cache=self.cache)
+        client = await self._get_client()  # Reutiliza client do pool
 
         try:
-            # Validações básicas - usar GeographicUtils (SINGLE SOURCE OF TRUTH)
+            # Validações básicas - GeographicUtils (SINGLE SOURCE OF TRUTH)
             if not GeographicUtils.is_valid_coordinate(lat, lon):
                 msg = f"Coordenadas inválidas: ({lat}, {lon})"
                 raise ValueError(msg)
 
-            # Log região detectada
-            is_nordic = client.is_in_nordic_region(lat, lon)
-            region_label = (
-                "NORDIC (1km + radar)" if is_nordic else "GLOBAL (9km ECMWF)"
-            )
+            # Enforcement de 5 dias de previsão
+            delta_days = (end_date - start_date).days
+            if delta_days > 5:
+                end_date = start_date + timedelta(days=5)
+                logger.bind(lat=lat, lon=lon).warning(
+                    f"Horizonte ajustado para 5 dias: {delta_days} -> 5"
+                )
 
-            logger.info(
+            # Log região detectada com get_region
+            # (4 tiers: usa/nordic/brazil/global)
+            region = GeographicUtils.get_region(lat, lon)
+
+            # Labels regionais para logging
+            region_labels = {
+                "nordic": "NORDIC (1km + radar)",
+                "usa": "USA (NOAA/NWS)",
+                "brazil": "BRAZIL (Xavier et al. validation)",
+                "global": "GLOBAL (9km ECMWF)",
+            }
+            region_label = region_labels.get(region, "UNKNOWN")
+
+            # Log específico para Brasil
+            if region == "brazil":
+                logger.bind(lat=lat, lon=lon).debug(
+                    "Região BR: Usando validações Xavier et al. "
+                    "(Open-Meteo fallback para precip histórica)"
+                )
+
+            logger.bind(lat=lat, lon=lon, region=region_label).info(
                 f"📡 Consultando MET Norway API: "
-                f"({lat}, {lon}) - {region_label}"
+                f"({lat}, {lon}, {altitude}m) - {region_label}"
             )
 
             # Buscar dados DIÁRIOS (agregados de horários)
@@ -132,16 +198,18 @@ class METNorwaySyncAdapter:
                 lon=lon,
                 start_date=start_date,
                 end_date=end_date,
+                altitude=altitude,
                 timezone=timezone,
-                # variables=None usa get_recommended_variables(lat, lon)
                 variables=None,
             )
 
             if not daily_data:
-                logger.warning("⚠️  MET Norway retornou dados vazios")
+                logger.bind(lat=lat, lon=lon).warning(
+                    "⚠️  MET Norway retornou dados vazios"
+                )
                 return []
 
-            logger.info(
+            logger.bind(lat=lat, lon=lon).info(
                 f"✅ MET Norway: {len(daily_data)} dias "
                 f"obtidos (de {start_date.date()} a {end_date.date()})"
             )
@@ -149,11 +217,10 @@ class METNorwaySyncAdapter:
             return daily_data
 
         except Exception as e:
-            logger.error(f"❌ Erro ao buscar dados MET Norway: {e}")
+            logger.bind(lat=lat, lon=lon).error(
+                f"❌ Erro ao buscar dados MET Norway: {e}"
+            )
             raise
-
-        finally:
-            await client.close()
 
     def health_check_sync(self) -> bool:
         """
@@ -171,7 +238,7 @@ class METNorwaySyncAdapter:
         Testa com coordenadas de Brasília (Brasil) para validar
         que é realmente GLOBAL.
         """
-        client = METNorwayClient(config=self.config, cache=self.cache)
+        client = await self._get_client()
 
         try:
             # Teste com Brasília (fora da Europa, prova que é GLOBAL!)
@@ -188,8 +255,23 @@ class METNorwaySyncAdapter:
             logger.error(f"🏥 MET Norway health check failed: {e}")
             return False
 
-        finally:
-            await client.close()
+    def get_attribution(self) -> str:
+        """
+        Retorna string de atribuição para visualizações (CC-BY 4.0).
+
+        Use em plots Dash:
+            fig.add_annotation(
+                text=adapter.get_attribution(),
+                xref="paper", yref="paper",
+                x=1.0, y=-0.1,
+                showarrow=False,
+                font=dict(size=10, color="gray"),
+            )
+
+        Returns:
+            str: Attribution text
+        """
+        return "Weather data from MET Norway (CC-BY 4.0)"
 
     def get_coverage_info(self) -> dict:
         """
@@ -210,12 +292,8 @@ class METNorwaySyncAdapter:
             "quality_tiers": {
                 "nordic": {
                     "region": "Norway, Denmark, Sweden, Finland, Baltics",
-                    "bbox": {
-                        "lon_min": 4.0,
-                        "lon_max": 31.0,
-                        "lat_min": 54.0,
-                        "lat_max": 71.5,
-                    },
+                    "bbox": GeographicUtils.NORDIC_BBOX,
+                    # Usa constant de geographic_utils
                     "resolution": "1 km",
                     "model": "MEPS 2.5km + MET Nordic downscaling",
                     "updates": "Hourly",
@@ -231,6 +309,27 @@ class METNorwaySyncAdapter:
                     ],
                     "precipitation_quality": (
                         "Very High (radar + bias correction)"
+                    ),
+                },
+                "brazil": {
+                    "region": "Brazil",
+                    "bbox": GeographicUtils.BRAZIL_BBOX,
+                    "resolution": "11 km (Open-Meteo fallback recommended)",
+                    "model": "ECMWF IFS",
+                    "updates": "4x per day",
+                    "variables": [
+                        "air_temperature_max",
+                        "air_temperature_min",
+                        "air_temperature_mean",
+                        "relative_humidity_mean",
+                    ],
+                    "precipitation_quality": (
+                        "Lower (excluded - use Open-Meteo instead)"
+                    ),
+                    "note": (
+                        "Use NASA POWER for historical data; "
+                        "MET Norway for forecast only (no precipitation). "
+                        "Xavier et al. validation thresholds applied."
                     ),
                 },
                 "global": {

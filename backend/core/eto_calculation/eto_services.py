@@ -3,7 +3,8 @@ Serviços modulares para cálculo de Evapotranspiração (ETo).
 
 Este módulo implementa a separação de responsabilidades:
 - EToCalculationService: Cálculo FAO-56 Penman-Monteith puro (sem I/O)
-- EToProcessingService: Orquestração completa do pipeline (download → fusion → ETo)
+- EToProcessingService: Orquestração completa do pipeline
+  (download → fusion → ETo)
 
 Benefícios:
 - Testabilidade: Cada serviço pode ser testado isoladamente
@@ -20,10 +21,10 @@ import pandas as pd
 from pandas import Timestamp
 from loguru import logger
 
-from backend.core.data_processing.data_download import download_weather_data
+from backend.api.services.data_download import download_weather_data
 from backend.core.data_processing.data_preprocessing import preprocessing
 from backend.core.data_processing.kalman_ensemble import KalmanEnsembleStrategy
-from backend.core.data_processing.station_finder import StationFinder
+from backend.api.services.nws_stations.station_finder import StationFinder
 from backend.api.services.opentopo import OpenTopoClient
 from backend.api.services.weather_utils import (
     ElevationUtils,
@@ -544,7 +545,7 @@ class EToProcessingService:
             # (Open-Meteo já retorna elevation sem custo extra)
             logger.info("📊 Etapa 1: Baixar dados climáticos")
 
-            weather_data, download_warnings = download_weather_data(
+            weather_data, download_warnings = await download_weather_data(
                 database, start_date, end_date, longitude, latitude
             )
 
@@ -675,7 +676,7 @@ class EToProcessingService:
 
             logger.info(f"   Pressão: {elevation_factors['pressure']:.2f} kPa")
             logger.info(
-                f"   Gamma (γ): {elevation_factors['gamma']:.5f} kPa/°C"
+                f"   Gamma (Y): {elevation_factors['gamma']:.5f} kPa/°C"
             )
             logger.info(
                 f"   Solar factor: {elevation_factors['solar_factor']:.4f}"
@@ -992,7 +993,7 @@ class EToProcessingService:
                             elevation=elevation,
                             date=date_obj,
                             raw_data=raw_data_clean,  # Sem NaN
-                            harmonized_data=None,  # TODO: Implementar harmonização
+                            harmonized_data=None,
                             eto_mm_day=data_item["eto_result"]["et0_mm_day"],
                             eto_method=data_item["eto_result"]["method"],
                             quality_flags={
@@ -1064,7 +1065,8 @@ class EToProcessingService:
 
         if len(anomalies) > len(et0_series) * 0.3:
             recs.append(
-                f"⚠️ Anomalias em {len(anomalies)} dias - revisar dados climáticos"
+                f"⚠️ Anomalias em {len(anomalies)} dias - "
+                "revisar dados climáticos"
             )
 
         total_irrigation = total_et0 * 1.1  # Coeficiente de cultura = 1.1
@@ -1136,7 +1138,7 @@ class EToProcessingService:
             from backend.api.services.climate_source_manager import (
                 ClimateSourceManager,
             )
-            from backend.core.data_processing.data_download import (
+            from backend.api.services.data_download import (
                 download_weather_data,
             )
             from backend.core.data_processing.data_preprocessing import (
@@ -1153,7 +1155,7 @@ class EToProcessingService:
                         f"📥 Baixando dados de {source_id} para "
                         f"({latitude}, {longitude})"
                     )
-                    weather_data, warnings = download_weather_data(
+                    weather_data, warnings = await download_weather_data(
                         source_id, start_date, end_date, longitude, latitude
                     )
 
@@ -1184,33 +1186,133 @@ class EToProcessingService:
                     "Nenhum dado climático disponível das fontes selecionadas."
                 )
 
-            # 2. Combinar dados de todas as fontes
+            # 2. ✅ CORREÇÃO: Combinar dados por data para fusão Kalman
             import pandas as pd
 
-            combined_data = pd.concat(all_weather_data, ignore_index=True)
+            combined_data = pd.concat(all_weather_data, ignore_index=False)
 
-            # 3. Preprocessing
+            # Garantir que date é datetime e está como índice
+            if combined_data.index.name != "date":
+                if "date" not in combined_data.columns:
+                    raise ValueError(
+                        "Coluna 'date' ausente nos dados climáticos"
+                    )
+                combined_data["date"] = pd.to_datetime(combined_data["date"])
+                combined_data.set_index("date", inplace=True)
+
+            # 3. Preprocessing (normalização, outlier detection)
             combined_data, preprocessing_warnings = preprocessing(
                 combined_data, latitude
             )
             fusion_warnings.extend(preprocessing_warnings)
 
-            # 4. Fusão usando Kalman Ensemble
-            try:
-                fused_data = self.kalman.auto_fuse_sync(
-                    latitude, longitude, combined_data.to_dict("records")
-                )
-                weather_data_fused = pd.DataFrame(fused_data)
-                self.logger.info(
-                    f"🔬 Fusão concluída: {len(weather_data_fused)} "
-                    f"registros fusionados"
-                )
-            except Exception as e:
-                self.logger.warning(
-                    f"Fusão falhou, usando dados combinados: {str(e)}"
-                )
-                weather_data_fused = combined_data
-                fusion_warnings.append(f"Erro na fusão: {str(e)}")
+            # 4. ✅ CORREÇÃO: Fusão Kalman POR DIA (múltiplas fontes)
+            self.logger.info(
+                f"🔬 Iniciando fusão Kalman para "
+                f"{len(combined_data.index.unique())} dias..."
+            )
+
+            fused_records = []
+
+            # Agrupar por data (múltiplas linhas por data = múltiplas fontes)
+            for date_key, group in combined_data.groupby(level=0):
+                # Se apenas 1 fonte, sem necessidade de fusão
+                if len(group) == 1:
+                    single_record = group.iloc[0].to_dict()
+                    fused_records.append(
+                        {
+                            "date": date_key,
+                            **single_record,
+                            "fusion_applied": False,
+                        }
+                    )
+                    continue
+
+                # Aplicar Kalman para múltiplas fontes
+                try:
+                    # Variáveis climáticas para fusão
+                    climate_vars = [
+                        "temperature_2m_max",
+                        "temperature_2m_min",
+                        "temperature_2m_mean",
+                        "relative_humidity_2m_mean",
+                        "wind_speed_2m_mean",
+                        "shortwave_radiation_sum",
+                        "precipitation_sum",
+                    ]
+
+                    # Preparar dados de cada fonte separadamente
+                    # para fusão real
+                    stations_data = []
+                    for idx, row in group.iterrows():
+                        station_measurement = {}
+                        for var in climate_vars:
+                            if var in row.index and not pd.isna(row[var]):
+                                station_measurement[var] = row[var]
+                        if station_measurement:
+                            stations_data.append(station_measurement)
+
+                    if len(stations_data) > 1:
+                        # ✅ FUSÃO REAL: múltiplas fontes via Kalman
+                        fused_result = self.kalman.auto_fuse_sync(
+                            latitude,
+                            longitude,
+                            current_measurements={},
+                            # Não usado quando stations_data é fornecido
+                            stations_data=stations_data,
+                            distance_weights=None,
+                            # Pesos iguais para todas as fontes
+                        )
+
+                        fused_records.append(
+                            {
+                                "date": date_key,
+                                **fused_result,
+                                "fusion_applied": True,
+                                "fusion_strategy": self.kalman.fusion.fusion_strategy,
+                                "sources_count": len(stations_data),
+                            }
+                        )
+                    else:
+                        # Apenas 1 fonte válida - usar diretamente
+                        fused_records.append(
+                            {
+                                "date": date_key,
+                                **stations_data[0],
+                                "fusion_applied": False,
+                                "sources_count": 1,
+                            }
+                        )
+
+                except Exception as e:
+                    self.logger.error(f"Fusão falhou para {date_key}: {e}")
+                    # Fallback: usar primeira fonte disponível
+                    fallback_data = {}
+                    for var in climate_vars:
+                        if var in group.columns:
+                            values = group[var].dropna().tolist()
+                            if values:
+                                fallback_data[var] = values[
+                                    0
+                                ]  # Primeira fonte
+
+                    fused_records.append(
+                        {
+                            "date": date_key,
+                            **fallback_data,
+                            "fusion_applied": False,
+                            "fusion_error": str(e),
+                            "sources_count": len(group),
+                        }
+                    )
+
+            # Criar DataFrame fusionado
+            weather_data_fused = pd.DataFrame(fused_records)
+            weather_data_fused.set_index("date", inplace=True)
+
+            self.logger.info(
+                f"✅ Fusão concluída: {len(weather_data_fused)} dias"
+            )
 
             # 5. Calcular ETo para cada dia
             et0_series = []
@@ -1228,6 +1330,50 @@ class EToProcessingService:
                     measurements["date"] = date_str_val
                     if elevation:
                         measurements["elevation_m"] = elevation
+
+                    # Debug: verificar chaves disponíveis antes do mapeamento
+                    # self.logger.warning(
+                    #     f"Medições disponíveis para {idx}: "
+                    #     f"{list(measurements.keys())}"
+                    # )
+
+                    # ✅ CORREÇÃO: Mapear nomes de colunas da fusão
+                    # para nomes esperados por calculate_et0
+                    column_mapping = {
+                        "temperature_2m_max": "T2M_MAX",
+                        "temperature_2m_min": "T2M_MIN",
+                        "temperature_2m_mean": "T2M_MEAN",
+                        "relative_humidity_2m_mean": "RH2M",
+                        "wind_speed_2m_mean": "WS2M",
+                        "shortwave_radiation_sum": "ALLSKY_SFC_SW_DWN",
+                        "precipitation_sum": "PRECTOTCORR",
+                        # NASA POWER usa "T2M" para média, calculate_et0 espera "T2M_MEAN"
+                        "T2M": "T2M_MEAN",
+                    }
+
+                    # Aplicar mapeamento
+                    for old_col, new_col in column_mapping.items():
+                        if old_col in measurements:
+                            measurements[new_col] = measurements.pop(old_col)
+
+                    # Debug: verificar após mapeamento
+                    # self.logger.warning(
+                    #     f"Após mapeamento para {idx}: "
+                    #     f"{list(measurements.keys())}"
+                    # )
+
+                    # Debug: verificar se elevation_m está presente
+                    if "elevation_m" not in measurements:
+                        self.logger.warning(
+                            f"Elevation ausente para {idx}, tentando obter..."
+                        )
+                        if elevation:
+                            measurements["elevation_m"] = elevation
+                        else:
+                            self.logger.error(
+                                f"Elevation não disponível para {idx}"
+                            )
+                            continue
 
                     et0_result = self.et0_calc.calculate_et0(measurements)
 
@@ -1295,7 +1441,7 @@ class EToProcessingService:
             # 7. Adicionar metadados da fusão
             source_manager = ClimateSourceManager()
             fusion_weights = source_manager.get_fusion_weights(
-                sources, (latitude, longitude)
+                sources, latitude, longitude
             )
 
             # 8. Formatar resposta final

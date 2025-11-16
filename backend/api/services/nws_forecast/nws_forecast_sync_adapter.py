@@ -124,65 +124,6 @@ class NWSDailyForecastSyncAdapter:
             logger.error(f"NWS Forecast health check failed: {e}")
             return False
 
-    def get_daily_data_sync(
-        self, lat: float, lon: float, start_date: datetime, end_date: datetime
-    ) -> List[NWSDailyForecastRecord]:
-        """
-        Obter dados diários agregados do NWS Forecast (sincrono).
-
-        Obtém previsões horárias e agrega em dados diários usando pandas.
-        Executa de forma síncrona criando/reusando event loop.
-
-        Processo:
-            1. Obter dados horários do cliente async
-            2. Converter para DataFrame pandas
-            3. Filtrar período solicitado (start_date a end_date)
-            4. Agregar por dia usando resample('D')
-            5. Calcular estatísticas (mean, max, min, sum)
-            6. Retornar lista de NWSDailyForecastRecord
-
-        Args:
-            lat: Latitude (-90 a 90)
-            lon: Longitude (-180 a 180)
-            start_date: Data inicial (datetime naive)
-            end_date: Data final (datetime naive)
-
-        Returns:
-            List[NWSDailyForecastRecord]: Dados diários agregados
-            Lista vazia se sem dados ou erro
-
-        Raises:
-            ValueError: Se coordenadas fora da cobertura USA
-
-        Exemplo:
-            adapter = NWSDailyForecastSyncAdapter()
-            data = adapter.get_daily_data_sync(
-                39.7392, -104.9903,
-                datetime(2025, 11, 6),
-                datetime(2025, 11, 10)
-            )
-            for record in data:
-                print(f"{record.date}: {record.temp_max}°C")
-        """
-        try:
-            # Criar event loop se não existir
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            # Executar de forma síncrona
-            return loop.run_until_complete(
-                self._get_daily_data_async(lat, lon, start_date, end_date)
-            )
-        except ValueError:
-            # Re-raise validation errors (coverage, dates, etc)
-            raise
-        except Exception as e:
-            logger.error(f"NWS Forecast data retrieval failed: {e}")
-            return []
-
     async def _get_daily_data_async(
         self, lat: float, lon: float, start_date: datetime, end_date: datetime
     ) -> List[NWSDailyForecastRecord]:
@@ -286,6 +227,35 @@ class NWSDailyForecastSyncAdapter:
             raise
         except Exception as e:
             logger.error(f"Erro ao processar dados NWS Forecast: {e}")
+            return []
+
+    def get_daily_data_sync(
+        self, lat: float, lon: float, start_date: datetime, end_date: datetime
+    ) -> List[NWSDailyForecastRecord]:
+        """
+        Wrapper síncrono para obter dados diários agregados.
+        Compatível com Celery (não-async).
+
+        Args:
+            lat: Latitude do ponto
+            lon: Longitude do ponto
+            start_date: Data inicial
+            end_date: Data final
+
+        Returns:
+            Lista de registros diários agregados
+        """
+        try:
+            # Executar método assíncrono de forma síncrona
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(
+                self._get_daily_data_async(lat, lon, start_date, end_date)
+            )
+            loop.close()
+            return result
+        except Exception as e:
+            logger.error(f"NWS Forecast sync wrapper failed: {e}")
             return []
 
     def get_attribution(self) -> str:

@@ -49,17 +49,53 @@ All data sources require proper attribution in publications and displays.
 See individual client docstrings for specific attribution text.
 
 Author: EVAonline Development Team
-Date: October 2025
+Date: November 2025  # Atualizado para data atual (15/11/2025)
 Version: 1.0.0
 """
 
+from typing import Any
 
-# Lazy imports to avoid circular dependencies
-def __getattr__(name: str):
-    """Lazy loading com novos caminhos organizados."""
+# Explicit exports para melhor discoverability (mypy, IDEs, __all__)
+__all__ = [
+    # Core Services
+    "ClimateClientFactory",
+    "ClimateSourceManager",
+    "ClimateSourceSelector",
+    "ClimateValidationService",
+    # NASA POWER
+    "NASAPowerClient",
+    "NASAPowerSyncAdapter",
+    # Open-Meteo Archive
+    "OpenMeteoArchiveClient",
+    "OpenMeteoArchiveSyncAdapter",
+    # Open-Meteo Forecast
+    "OpenMeteoForecastClient",
+    "OpenMeteoForecastSyncAdapter",
+    # MET Norway
+    "METNorwayClient",
+    "METNorwaySyncAdapter",
+    # NWS Forecast
+    "NWSForecastClient",
+    "NWSDailyForecastSyncAdapter",
+    # NWS Stations
+    "NWSStationsClient",
+    "NWSStationsSyncAdapter",
+    # OpenTopoData
+    "OpenTopoClient",
+    # Weather Utils
+    "WeatherConversionUtils",
+    "ElevationUtils",
+]
+
+
+def __getattr__(name: str) -> Any:
+    """
+    Lazy loading para evitar dependências circulares.
+    """
     import importlib
 
-    lazy_imports = {
+    # Mapeamento centralizado: (submodule_path, class_name)
+    lazy_imports: dict[str, tuple[str, str]] = {
         # Core Services
         "ClimateClientFactory": (".climate_factory", "ClimateClientFactory"),
         "ClimateSourceManager": (
@@ -129,35 +165,39 @@ def __getattr__(name: str):
             "NWSStationsSyncAdapter",
         ),
         # OpenTopoData
-        "OpenTopoClient": (
-            ".opentopo.opentopo_client",
-            "OpenTopoClient",
-        ),
+        "OpenTopoClient": (".opentopo.opentopo_client", "OpenTopoClient"),
         # Weather Utils
-        "WeatherConversionUtils": (
-            ".weather_utils",
-            "WeatherConversionUtils",
-        ),
-        "ElevationUtils": (
-            ".weather_utils",
-            "ElevationUtils",
-        ),
+        "WeatherConversionUtils": (".weather_utils", "WeatherConversionUtils"),
+        "ElevationUtils": (".weather_utils", "ElevationUtils"),
     }
 
     if name in lazy_imports:
         module_path, class_name = lazy_imports[name]
         try:
+            # Import relativo (__name__ é 'backend.api.services')
             module = importlib.import_module(module_path, package=__name__)
-            return getattr(module, class_name)
+            attr = getattr(module, class_name)
+            # Cache evita re-import em chamadas repetidas
+            # Nota: __dict__[name] = attr  # Descomente para cache
+            return attr
         except (ImportError, AttributeError) as e:
+            # Erro mais descritivo com contexto
             raise ImportError(
-                f"Cannot import {name} from {module_path}: {e}"
+                f"Falha ao importar '{name}' de '{module_path}': {e}. "
+                f"Verifique se o módulo existe e a classe "
+                f"'{class_name}' está definida."
             ) from e
 
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+    # Fallback para atributos padrão (ex.: __version__)
+    if name in {"__version__", "__author__", "__date__"}:
+        return globals()[name]
+
+    raise AttributeError(f"Módulo '{__name__}' não possui atributo '{name}'")
 
 
-# Version info
+# Version info (atualizado para data atual)
 __version__ = "1.0.0"
 __author__ = "EVAonline Development Team"
-__date__ = "October 2025"
+__date__ = (
+    "November 2025"  # Atualizado para alinhar com data atual (15/11/2025)
+)

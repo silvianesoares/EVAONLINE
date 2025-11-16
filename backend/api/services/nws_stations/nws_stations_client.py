@@ -339,10 +339,10 @@ class NWSStationsClient:
             # Endpoint de observações
             url = f"{self.config.base_url}/stations/{station_id}/observations"
 
-            # Parâmetros de query
+            # Parâmetros de query (remover microsegundos para API NWS)
             params = {
-                "start": start_date.isoformat() + "Z",
-                "end": end_date.isoformat() + "Z",
+                "start": start_date.replace(microsecond=0).isoformat() + "Z",
+                "end": end_date.replace(microsecond=0).isoformat() + "Z",
             }
 
             response = await self.client.get(url, params=params)

@@ -216,16 +216,21 @@ start_worker() {
         --max-tasks-per-child=100
 }
 
-start_beat() {
-    log "⏰ Iniciando Celery Beat..."
+start_worker_eto() {
+    log "🔧 Iniciando Celery Worker ETo (CPU-intensive)..."
     wait_for_service "${REDIS_HOST:-redis}" "6379" "Redis"
     wait_for_service "${POSTGRES_HOST:-postgres}" "${POSTGRES_PORT:-5432}" "PostgreSQL"
 
     check_database_connection
 
-    exec celery -A backend.infrastructure.celery.celery_config:celery_app beat \
+    # Worker especializado para cálculos ETo
+    exec celery -A backend.infrastructure.celery.celery_config:celery_app worker \
         --loglevel="$LOG_LEVEL" \
-        --scheduler="${CELERY_BEAT_SCHEDULER:-redbeat.RedBeatScheduler}"
+        --queues=eto \
+        --concurrency="${CELERY_CONCURRENCY:-2}" \
+        --prefetch-multiplier="${CELERY_PREFETCH_MULTIPLIER:-1}" \
+        --max-tasks-per-child=50 \
+        --pool=prefork
 }
 
 start_flower() {
@@ -333,6 +338,9 @@ main() {
         "worker")
             start_worker
             ;;
+        "worker-eto")
+            start_worker_eto
+            ;;
         "beat")
             start_beat
             ;;
@@ -347,7 +355,7 @@ main() {
             ;;
         *)
             log "❌ Erro: Serviço '$SERVICE' não reconhecido."
-            log "📚 Serviços disponíveis: api, worker, beat, flower, migrate, all"
+            log "📚 Serviços disponíveis: api, worker, worker-eto, beat, flower, migrate, all"
             exit 1
             ;;
     esac

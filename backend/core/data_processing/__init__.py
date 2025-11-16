@@ -32,7 +32,7 @@ def __getattr__(name: str) -> Any:
     lazy_imports = {
         # Data download
         "download_weather_data": (
-            "backend.core.data_processing.data_download",
+            "backend.api.services.data_download",
             "download_weather_data",
         ),
         # Data preprocessing

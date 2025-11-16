@@ -1,11 +1,14 @@
 import asyncio
 import json
 import os
-from datetime import datetime
-
 import redis
-from celery.result import AsyncResult
+from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from celery.result import AsyncResult
+import asyncio
+
+
+from celery.result import AsyncResult
 from loguru import logger
 
 # Criar roteador
@@ -24,14 +27,19 @@ async def broadcast_to_task_subscribers(task_id: str, message: dict):
     redis_client.publish(channel, json.dumps(message))
 
 
-async def monitor_task_timeout(websocket: WebSocket, task_id: str, timeout_minutes: int = 30):
+async def monitor_task_timeout(
+    websocket: WebSocket, task_id: str, timeout_minutes: int = 30
+):
     """
     Monitora o timeout da tarefa e fecha a conexão se exceder o limite.
     """
     try:
         await asyncio.sleep(timeout_minutes * 60)
         await websocket.send_json(
-            {"status": "TIMEOUT", "error": f"Monitoramento excedeu {timeout_minutes} minutos"}
+            {
+                "status": "TIMEOUT",
+                "error": f"Monitoramento excedeu {timeout_minutes} minutos",
+            }
         )
         await websocket.close()
     except Exception as e:
@@ -55,7 +63,9 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
     pubsub.subscribe(channel)
 
     # Iniciar monitor de timeout
-    timeout_task = asyncio.create_task(monitor_task_timeout(websocket, task_id))
+    timeout_task = asyncio.create_task(
+        monitor_task_timeout(websocket, task_id)
+    )
 
     try:
         task = AsyncResult(task_id)
@@ -101,7 +111,11 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
                 result, warnings = task_result if task_result else (None, None)
                 success_info = {
                     "status": "SUCCESS",
-                    "result": result.to_dict() if hasattr(result, "to_dict") else result,
+                    "result": (
+                        result.to_dict()
+                        if hasattr(result, "to_dict")
+                        else result
+                    ),
                     "warnings": warnings,
                     "timestamp": datetime.now().isoformat(),
                 }
@@ -111,7 +125,9 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
         await asyncio.gather(listen_redis(), monitor_task())
 
     except WebSocketDisconnect:
-        logger.info(f"Cliente desconectado do monitoramento da tarefa {task_id}")
+        logger.info(
+            f"Cliente desconectado do monitoramento da tarefa {task_id}"
+        )
     except Exception as e:
         error_message = {
             "status": "ERROR",
@@ -121,7 +137,9 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
         try:
             await websocket.send_json(error_message)
         except Exception:
-            logger.error(f"Erro ao enviar mensagem de erro para o cliente: {str(e)}")
+            logger.error(
+                f"Erro ao enviar mensagem de erro para o cliente: {str(e)}"
+            )
     finally:
         timeout_task.cancel()
         pubsub.close()

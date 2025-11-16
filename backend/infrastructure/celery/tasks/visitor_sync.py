@@ -8,7 +8,9 @@ persistidos do Redis para PostgreSQL regularmente.
 import logging
 from typing import Any, Dict
 
-from backend.core.analytics.visitor_counter_service import VisitorCounterService
+from backend.core.analytics.visitor_counter_service import (
+    VisitorCounterService,
+)
 from backend.database.connection import get_db
 from backend.infrastructure.celery.celery_config import celery_app
 
@@ -50,7 +52,9 @@ def sync_visitor_data() -> Dict[str, Any]:
             logger.error(f"❌ Erro na sincronização: {result['error']}")
             return result
 
-        logger.info(f"✅ Sincronização concluída: {result['total_visitors']} visitantes")
+        logger.info(
+            f"✅ Sincronização concluída: {result['total_visitors']} visitantes"
+        )
         return result
 
     except Exception as e:

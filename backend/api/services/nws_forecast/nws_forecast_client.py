@@ -51,11 +51,10 @@ from pydantic import BaseModel, Field
 try:
     from backend.api.services.geographic_utils import (
         GeographicUtils,
-        TimezoneUtils,
     )
     from backend.api.services.weather_utils import WeatherConversionUtils
 except ImportError:
-    from ..geographic_utils import GeographicUtils, TimezoneUtils
+    from ..geographic_utils import GeographicUtils
     from ..weather_utils import WeatherConversionUtils
 
 

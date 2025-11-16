@@ -38,7 +38,10 @@ def sample_date_ranges():
         "yesterday": (today - timedelta(days=1), today),
         "last_week": (today - timedelta(days=7), today),
         "last_month": (today - timedelta(days=30), today),
-        "forecast_range": (today - timedelta(days=2), today + timedelta(days=5)),
+        "forecast_range": (
+            today - timedelta(days=2),
+            today + timedelta(days=5),
+        ),
     }
 
 
@@ -139,20 +142,6 @@ def disable_network_calls(monkeypatch):
         raise RuntimeError(msg)
 
     monkeypatch.setattr("requests.get", mock_get)
-
-
-@pytest.fixture(autouse=True)
-def mock_redis_for_all_tests(monkeypatch):
-    """Mock Redis for all tests to avoid connection errors."""
-    mock_client = Mock()
-    mock_client.ping.return_value = True
-    mock_client.get.return_value = None
-    mock_client.setex.return_value = True
-
-    def mock_from_url(*args, **kwargs):
-        return mock_client
-
-    monkeypatch.setattr("backend.api.services.openmeteo.Redis.from_url", mock_from_url)
 
 
 # Test configuration

@@ -1,4 +1,5 @@
 """
+# Download histórico + email
 Celery task para processamento de downloads históricos de dados climáticos.
 
 Esta task processa requisições de dados históricos (>30 dias) de forma assíncrona,
@@ -116,7 +117,7 @@ def process_historical_download(
         )
 
         # 1. Baixar dados
-        from backend.core.data_processing.data_download import (
+        from backend.api.services.data_download import (
             download_weather_data,
         )
 

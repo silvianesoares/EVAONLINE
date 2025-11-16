@@ -39,17 +39,29 @@ class NASAPowerSyncAdapter:
         lon: float,
         start_date: datetime,
         end_date: datetime,
-        community: str = "AG",  # UPPERCASE: AG, RE, SB
+        community: str = "AG",
     ) -> list[NASAPowerData]:
         """
-        Busca dados diários de forma síncrona.
-        """
-        logger.debug(
-            f"Sync request: lat={lat}, lon={lon}, "
-            f"dates={start_date.date()} to {end_date.date()}"
-        )
+        Baixa dados NASA POWER de forma SÍNCRONA.
 
-        # Executa função assíncrona de forma síncrona
+        Args:
+            lat: Latitude (-90 a 90)
+            lon: Longitude (-180 a 180)
+            start_date: Data inicial
+            end_date: Data final
+            community: Comunidade NASA ('AG' para Agronomia)
+
+        Returns:
+            Lista de dados diários
+
+        Example:
+            >>> adapter = NASAPowerSyncAdapter()
+            >>> data = adapter.get_daily_data_sync(
+            ...     lat=-15.7939, lon=-47.8828,
+            ...     start_date=datetime(2024, 1, 1),
+            ...     end_date=datetime(2024, 1, 7)
+            ... )
+        """
         return asyncio.run(
             self._async_get_daily_data(
                 lat=lat,
@@ -97,7 +109,16 @@ class NASAPowerSyncAdapter:
         Returns:
             bool: True se API está acessível
         """
-        return asyncio.run(self._async_health_check())
+        try:
+            # Verificar se já há event loop rodando
+            asyncio.get_running_loop()
+            import nest_asyncio
+
+            nest_asyncio.apply()
+            return asyncio.run(self._async_health_check())
+        except RuntimeError:
+            # Não há loop rodando
+            return asyncio.run(self._async_health_check())
 
     async def _async_health_check(self) -> bool:
         """Health check assíncrono interno."""

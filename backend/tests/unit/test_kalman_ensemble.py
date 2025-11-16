@@ -20,7 +20,9 @@ class TestSimpleKalmanFilter:
 
     def test_initialization(self):
         """Teste de inicialização"""
-        kf = SimpleKalmanFilter(process_variance=1e-4, measurement_variance=0.1, initial_value=0.0)
+        kf = SimpleKalmanFilter(
+            process_variance=1e-4, measurement_variance=0.1, initial_value=0.0
+        )
         assert kf.state.posterior_estimate == 0.0
         assert kf.state.posterior_error_estimate == 1.0
 
@@ -58,7 +60,8 @@ class TestSimpleKalmanFilter:
 
         # Deve manter a estimativa anterior
         assert result == 5.0
-        assert len(kf.state.history) == 0  # Não deve adicionar ao histórico
+        # Adiciona ao histórico para consistência temporal
+        assert len(kf.state.history) == 1
 
     def test_state_retrieval(self):
         """Teste de recuperação de estado"""
@@ -78,7 +81,9 @@ class TestAdaptiveKalmanFilter:
 
     def test_initialization_with_normals(self):
         """Teste de inicialização com normais históricos"""
-        kf = AdaptiveKalmanFilter(monthly_normal=5.0, historical_std=1.5, station_confidence=0.9)
+        kf = AdaptiveKalmanFilter(
+            monthly_normal=5.0, historical_std=1.5, station_confidence=0.9
+        )
 
         assert kf.state.posterior_estimate == 5.0
         assert kf.state.posterior_error_estimate == 1.5
@@ -103,7 +108,7 @@ class TestAdaptiveKalmanFilter:
         assert abs(measurement - result2) > abs(measurement - result1)
 
     def test_confidence_impact(self):
-        """Teste de impacto da confiança"""
+        """Teste de impacto da confiança na estação"""
         kf_high_conf = AdaptiveKalmanFilter(
             monthly_normal=5.0, historical_std=1.0, station_confidence=0.95
         )
@@ -115,9 +120,10 @@ class TestAdaptiveKalmanFilter:
         result_high = kf_high_conf.update(measurement)
         result_low = kf_low_conf.update(measurement)
 
-        # Alta confiança = menos movimento do filtro
-        # Baixa confiança = mais movimento
-        assert abs(5.0 - result_high) < abs(5.0 - result_low)
+        # Alta confiança NA ESTAÇÃO = confia mais na MEDIÇÃO
+        # Logo, se move MAIS em direção à medição (10.0)
+        # Baixa confiança = confia menos na medição, fica mais próximo do normal
+        assert abs(10.0 - result_high) < abs(10.0 - result_low)
 
     def test_confidence_interval(self):
         """Teste de intervalo de confiança 95%"""
@@ -148,7 +154,11 @@ class TestClimateKalmanFusion:
         """Teste de fusão simples"""
         fusion = ClimateKalmanFusion()
 
-        measurements = {"temperature": 25.0, "humidity": 65.0, "precipitation": 10.0}
+        measurements = {
+            "temperature": 25.0,
+            "humidity": 65.0,
+            "precipitation": 10.0,
+        }
 
         result = fusion.fuse_simple(measurements, station_confidence=0.8)
 
@@ -166,7 +176,9 @@ class TestClimateKalmanFusion:
 
         stds = {"temperature": 2.0, "precipitation": 30.0}
 
-        result = fusion.fuse_adaptive(measurements, normals, stds, station_confidence=0.85)
+        result = fusion.fuse_adaptive(
+            measurements, normals, stds, station_confidence=0.85
+        )
 
         assert "temperature" in result
         assert "temperature_anomaly" in result
@@ -184,7 +196,9 @@ class TestClimateKalmanFusion:
         ]
 
         result = fusion.fuse_multiple_stations(
-            stations_data, distance_weights=[0.5, 0.3, 0.2], has_historical_data=False
+            stations_data,
+            distance_weights=[0.5, 0.3, 0.2],
+            has_historical_data=False,
         )
 
         # Deve estar perto da média ponderada
@@ -217,7 +231,11 @@ class TestClimateKalmanFusion:
         """Teste com dados faltando"""
         fusion = ClimateKalmanFusion()
 
-        measurements = {"temperature": 25.0, "humidity": None, "precipitation": float("nan")}
+        measurements = {
+            "temperature": 25.0,
+            "humidity": None,
+            "precipitation": float("nan"),
+        }
 
         result = fusion.fuse_simple(measurements)
 
@@ -230,7 +248,13 @@ class TestClimateKalmanFusion:
         fusion = ClimateKalmanFusion()
 
         # Série de medições
-        measurements_series = [{"eto": 4.0}, {"eto": 4.5}, {"eto": 5.0}, {"eto": 4.8}, {"eto": 5.2}]
+        measurements_series = [
+            {"eto": 4.0},
+            {"eto": 4.5},
+            {"eto": 5.0},
+            {"eto": 4.8},
+            {"eto": 5.2},
+        ]
 
         results = []
         for measurements in measurements_series:
@@ -282,7 +306,9 @@ class TestKalmanIntegration:
         fusion = ClimateKalmanFusion()
 
         # Primeiro com histórico
-        fusion.fuse_adaptive({"temperature": 25.0}, {"temperature": 23.0}, {"temperature": 2.0})
+        fusion.fuse_adaptive(
+            {"temperature": 25.0}, {"temperature": 23.0}, {"temperature": 2.0}
+        )
 
         # Depois sem histórico (mesmo filtro)
         result = fusion.fuse_simple({"temperature": 26.0})

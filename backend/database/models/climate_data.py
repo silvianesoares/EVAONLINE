@@ -20,7 +20,7 @@ from backend.database.connection import Base
 
 class ClimateData(Base):
     """
-    Modelo MODERNO para armazenamento flexível de dados climáticos
+    Modelo para armazenamento flexível de dados climáticos
     de múltiplas APIs.
 
     Usa campos JSONB para suportar diferentes esquemas de variáveis

@@ -1,5 +1,6 @@
 """
-Módulo para cálculo da Evapotranspiração de Referência (ETo) usando o método FAO-56 Penman-Monteith.
+Módulo para cálculo da Evapotranspiração de Referência (ETo)
+usando o método FAO-56 Penman-Monteith.
 
 REFATORAÇÃO FASE 3:
 - Este módulo agora funciona como WRAPPER para compatibilidade
@@ -55,6 +56,9 @@ def calculate_eto(
 
     Delegado para: EToCalculationService (eto_services.py)
 
+    ✅ CORREÇÃO: Agora calcula elevation_factors pré-calculados
+    para passar para o serviço de cálculo.
+
     Args:
         weather_df: DataFrame com dados climáticos.
         elevation: Elevação em metros.
@@ -65,7 +69,20 @@ def calculate_eto(
     """
     warnings = []
     try:
+        from backend.api.services.weather_utils import ElevationUtils
+
         service = EToCalculationService()
+
+        # ✅ CALCULAR FATORES DE ELEVAÇÃO PRÉ-CALCULADOS
+        elevation_factors = ElevationUtils.get_elevation_correction_factor(
+            elevation
+        )
+        logger.info(
+            f"📐 Fatores de elevação calculados: "
+            f"P={elevation_factors['pressure']:.2f}kPa, "
+            f"γ={elevation_factors['gamma']:.5f}kPa/°C, "
+            f"Solar={elevation_factors['solar_factor']:.4f}"
+        )
 
         # Processar cada linha
         et0_results = []
@@ -78,7 +95,11 @@ def calculate_eto(
             )
             measurements["elevation_m"] = elevation
 
-            result = service.calculate_et0(measurements)
+            # ✅ PASSAR elevation_factors PRÉ-CALCULADOS
+            result = service.calculate_et0(
+                measurements,
+                elevation_factors=elevation_factors,  # ← CORREÇÃO AQUI
+            )
             et0_results.append(result["et0_mm_day"])
 
         weather_df["ETo"] = et0_results
@@ -93,7 +114,7 @@ def calculate_eto(
             "ETo",
         ]
 
-        logger.info("Cálculo de ETo concluído com sucesso")
+        logger.info("✅ Cálculo de ETo concluído com elevation_factors")
         return weather_df[result_columns], warnings
 
     except Exception as e:

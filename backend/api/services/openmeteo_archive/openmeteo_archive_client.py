@@ -52,6 +52,8 @@ class OpenMeteoArchiveConfig:
     # This client ASSUMES pre-validated dates from climate_validation.py.
     # - MIN_DATE: 1940-01-01 (in climate_source_availability.py)
     # - MAX_DATE: hoje - 2d (in climate_source_availability.py)
+    MIN_DATE = datetime(1940, 1, 1)
+    MAX_DATE_OFFSET = 2  # hoje - 2d
 
     # Cache TTL (dados históricos são estáveis)
     CACHE_TTL = 86400  # 24 hours (pode ter correções)

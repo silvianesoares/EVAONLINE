@@ -21,11 +21,10 @@ Available APIs:
         Universal fallback (2-7 day delay)
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from loguru import logger
 
-from backend.api.services.climate_factory import ClimateClientFactory
 from backend.api.services.geographic_utils import GeographicUtils
 
 # Type hints for climate sources
@@ -41,183 +40,195 @@ ClimateSource = Literal[
 
 class ClimateSourceSelector:
     """
-    Seletor inteligente de fonte climática.
+    Intelligent climate source selector.
 
-    Determina automaticamente a melhor API para buscar dados climáticos
-    baseado nas coordenadas geográficas fornecidas.
+    Automatically determines the best API to fetch climate data
+    based on provided geographic coordinates.
 
-    IMPORTANTE: Utiliza GeographicUtils para detecção de região
-    (SINGLE SOURCE OF TRUTH para bbox USA, Nordic, etc)
+    IMPORTANT: Uses GeographicUtils for region detection
+    (SINGLE SOURCE OF TRUTH for USA, Nordic, etc. bounding boxes)
 
-    Estratégia MET Norway:
-        - Região Nórdica: Temperatura, Umidade, Precipitação
-          (1km, radar + crowdsourced, atualizações horárias)
-        - Resto do Mundo: Apenas Temperatura e Umidade
-          (9km ECMWF, precipitação de menor qualidade - usar Open-Meteo)
+    MET Norway Strategy:
+        - Nordic Region: Temperature, Humidity, Precipitation
+          (1km, radar + crowdsourced, hourly updates)
+        - Rest of World: Temperature and Humidity only
+          (9km ECMWF, lower precipitation quality - use Open-Meteo)
 
-    Prioridades:
-        1. NWS (USA): Tempo real, alta qualidade regional
-        2. MET Norway (Nordic): Melhor precipitação do mundo
-        3. Open-Meteo Forecast: Tempo real, alta qualidade global
-        4. NASA POWER: Fallback com delay 2-7 dias
+    Priorities:
+        1. NWS (USA): Real-time, high regional quality
+        2. MET Norway (Nordic): World's best precipitation
+        3. Open-Meteo Forecast: Real-time, high global quality
+        4. NASA POWER: Fallback with 2-7 day delay
     """
+
+    # Source metadata mapping for client creation
+    _SOURCE_TO_CLIENT_MAP = {
+        "met_norway": "create_met_norway",
+        "nws_forecast": "create_nws",
+        "nws_stations": "create_nws",
+        "openmeteo_archive": "create_openmeteo_archive",
+        "openmeteo_forecast": "create_openmeteo_forecast",
+        "nasa_power": "create_nasa_power",
+    }
 
     @classmethod
     def select_source(cls, lat: float, lon: float) -> ClimateSource:
         """
-        Seleciona melhor fonte climática para coordenadas.
+        Select best climate source for coordinates.
 
-        Algoritmo de seleção:
-        1. Verifica se está no USA → NWS
-        2. Verifica se está na região Nórdica → MET Norway (alta qualidade)
-        3. Fallback → Open-Meteo Forecast (cobertura global, tempo real)
+        Selection algorithm:
+        1. Check if in USA → NWS
+        2. Check if in Nordic region → MET Norway (high quality)
+        3. Fallback → Open-Meteo Forecast (global coverage, real-time)
 
         Args:
-            lat: Latitude (-90 a 90)
-            lon: Longitude (-180 a 180)
+            lat: Latitude (-90 to 90)
+            lon: Longitude (-180 to 180)
 
         Returns:
-            Nome da fonte recomendada
+            Recommended source name
 
-        Exemplo:
-            # Nova York, USA
-            source = ClimateSourceSelector.select_source(40.7128, -74.0060)
-            # → "nws_forecast"
+        Examples:
+            # New York, USA
+            >>> ClimateSourceSelector.select_source(40.7128, -74.0060)
+            'nws_forecast'
 
-            # Oslo, Noruega (região nórdica)
-            source = ClimateSourceSelector.select_source(59.9139, 10.7522)
-            # → "met_norway"
+            # Oslo, Norway (Nordic region)
+            >>> ClimateSourceSelector.select_source(59.9139, 10.7522)
+            'met_norway'
 
-            # Paris, França
-            source = ClimateSourceSelector.select_source(48.8566, 2.3522)
-            # → "openmeteo_forecast"
+            # Paris, France
+            >>> ClimateSourceSelector.select_source(48.8566, 2.3522)
+            'openmeteo_forecast'
 
-            # Brasília, Brasil
-            source = ClimateSourceSelector.select_source(-15.7939, -47.8828)
-            # → "openmeteo_forecast"
+            # Brasília, Brazil
+            >>> ClimateSourceSelector.select_source(-15.7939, -47.8828)
+            'openmeteo_forecast'
         """
-        # Prioridade 1: USA (NWS Forecast)
+        # Priority 1: USA (NWS Forecast)
         if GeographicUtils.is_in_usa(lat, lon):
-            logger.debug(
-                f"📍 Coordenadas ({lat}, {lon}) no USA → NWS Forecast"
-            )
+            logger.debug(f"Coordinates ({lat}, {lon}) in USA → NWS Forecast")
             return "nws_forecast"
 
-        # Prioridade 2: Região Nórdica (MET Norway alta qualidade)
+        # Priority 2: Nordic Region (MET Norway high quality)
         if GeographicUtils.is_in_nordic(lat, lon):
             logger.debug(
-                f"📍 Coordenadas ({lat}, {lon}) na região NÓRDICA → "
-                f"MET Norway (1km, radar, precipitação alta qualidade)"
+                f"Coordinates ({lat}, {lon}) in NORDIC region → "
+                f"MET Norway (1km, radar, high-quality precipitation)"
             )
             return "met_norway"
 
-        # Fallback: Global (Open-Meteo Forecast - tempo real, alta qualidade)
-        logger.debug(f"📍 Coordenadas ({lat}, {lon}) → Open-Meteo Forecast")
+        # Fallback: Global (Open-Meteo Forecast - real-time, high quality)
+        logger.debug(
+            f"Coordinates ({lat}, {lon}) → Open-Meteo Forecast (global)"
+        )
         return "openmeteo_forecast"
 
     @classmethod
     def get_client(cls, lat: float, lon: float):
         """
-        Retorna cliente apropriado para coordenadas.
+        Return appropriate client for coordinates.
 
-        Combina select_source() com ClimateClientFactory para
-        retornar cliente já configurado e pronto para uso.
+        Combines select_source() with ClimateClientFactory to
+        return pre-configured, ready-to-use client.
 
         Args:
             lat: Latitude
             lon: Longitude
 
         Returns:
-            Cliente climático configurado
+            Configured climate client
 
-        Exemplo:
-            # Obter cliente automático para Paris
-            client = ClimateSourceSelector.get_client(
-                lat=48.8566, lon=2.3522
-            )
-            # → METNorwayClient com cache injetado
+        Examples:
+            # Get automatic client for Paris
+            >>> client = ClimateSourceSelector.get_client(
+            ...     lat=48.8566, lon=2.3522
+            ... )
+            # → METNorwayClient with injected cache
 
-            data = await client.get_forecast_data(...)
-            await client.close()
+            >>> data = await client.get_forecast_data(...)
+            >>> await client.close()
         """
-        source = cls.select_source(lat, lon)
+        # Lazy import to avoid circular dependencies
+        from backend.api.services.climate_factory import (
+            ClimateClientFactory,
+        )
 
-        if source == "met_norway":
-            return ClimateClientFactory.create_met_norway()
-        elif source == "nws_forecast" or source == "nws_stations":
-            return ClimateClientFactory.create_nws()
-        elif source == "openmeteo_archive":
-            return ClimateClientFactory.create_openmeteo_archive()
-        elif source == "openmeteo_forecast":
-            return ClimateClientFactory.create_openmeteo_forecast()
-        else:  # nasa_power
+        source = cls.select_source(lat, lon)
+        factory_method = cls._SOURCE_TO_CLIENT_MAP.get(source)
+
+        if not factory_method:
+            logger.warning(
+                f"Unknown source '{source}', falling back to NASA POWER"
+            )
             return ClimateClientFactory.create_nasa_power()
+
+        return getattr(ClimateClientFactory, factory_method)()
 
     @classmethod
     def get_all_sources(cls, lat: float, lon: float) -> list[ClimateSource]:
         """
-        Retorna TODAS as fontes disponíveis para coordenadas.
+        Return ALL available sources for coordinates.
 
-        Útil para fusão multi-fonte ou validação cruzada.
+        Useful for multi-source fusion or cross-validation.
 
-        Lógica:
-        - NASA POWER sempre disponível (cobertura global)
-        - MET Norway Locationforecast se na região nórdica (prioridade)
-          ou global (temperatura/umidade apenas)
-        - NWS Forecast/Stations se no USA
-        - Open-Meteo Archive/Forecast sempre disponível
+        Logic:
+        - NASA POWER always available (global coverage)
+        - MET Norway Locationforecast if in Nordic region (priority)
+          or global (temperature/humidity only)
+        - NWS Forecast/Stations if in USA
+        - Open-Meteo Archive/Forecast always available
 
         Args:
             lat: Latitude
             lon: Longitude
 
         Returns:
-            Lista de fontes aplicáveis, ordenadas por prioridade
+            List of applicable sources, ordered by priority
 
-        Exemplo:
-            # Oslo (Região Nórdica)
-            sources = ClimateSourceSelector.get_all_sources(59.9139, 10.7522)
-            # → ["met_norway", "openmeteo_forecast",
-            #    "nasa_power", ...]
+        Examples:
+            # Oslo (Nordic Region)
+            >>> ClimateSourceSelector.get_all_sources(59.9139, 10.7522)
+            ['met_norway', 'openmeteo_forecast', 'nasa_power', ...]
 
-            # Brasília (apenas global)
-            sources = ClimateSourceSelector.get_all_sources(-15.7939, -47.8828)
-            # → ["openmeteo_forecast", "met_norway",
-            #    "nasa_power", "openmeteo_archive"]
+            # Brasília (global only)
+            >>> ClimateSourceSelector.get_all_sources(-15.7939, -47.8828)
+            ['openmeteo_forecast', 'met_norway', 'nasa_power', ...]
         """
-        sources = []
+        sources: list[ClimateSource] = []
 
-        # Fontes regionais (alta prioridade)
+        # Regional sources (high priority)
         if GeographicUtils.is_in_usa(lat, lon):
-            sources.append("nws_forecast")
-            sources.append("nws_stations")
+            sources.extend(["nws_forecast", "nws_stations"])
 
-        # MET Norway tem prioridade na região nórdica
+        # MET Norway has priority in Nordic region
         if GeographicUtils.is_in_nordic(lat, lon):
-            sources.append("met_norway")
-            sources.append("openmeteo_forecast")
+            sources.extend(["met_norway", "openmeteo_forecast"])
         else:
-            # Fora da região nórdica: Open-Meteo tem prioridade
-            sources.append("openmeteo_forecast")
-            sources.append("met_norway")
+            # Outside Nordic: Open-Meteo has priority
+            sources.extend(["openmeteo_forecast", "met_norway"])
 
-        # Fontes globais adicionais
+        # Additional global sources
         sources.extend(["openmeteo_archive", "nasa_power"])
 
-        logger.debug(f"📍 Fontes disponíveis para ({lat}, {lon}): {sources}")
+        logger.debug(f"Available sources for ({lat}, {lon}): {sources}")
 
         return sources
 
     @classmethod
-    def get_data_availability_summary(cls) -> dict[str, dict]:
+    def get_data_availability_summary(cls) -> dict[str, dict[str, str]]:
         """
-        Retorna resumo da disponibilidade de dados de todas as fontes (6 APIs).
+        Return availability summary for all data sources (6 APIs).
 
         Returns:
-            dict: Informações de disponibilidade por fonte
+            Dict with availability information per source
+
+        Example:
+            >>> summary = ClimateSourceSelector.get_data_availability_summary()
+            >>> summary['openmeteo_archive']['period']
+            '1940-01-01 to today-2d'
         """
-        # Implementação estática sem imports circulares
-        summary = {
+        return {
             "openmeteo_archive": {
                 "coverage": "global",
                 "period": "1940-01-01 to today-2d",
@@ -252,39 +263,34 @@ class ClimateSourceSelector:
                 "coverage": "global",
                 "period": "today to today+5d",
                 "license": "CC-BY-4.0",
-                "description": "MET Norway Locationforecast (global coverage)",
+                "description": "MET Norway Locationforecast (global)",
             },
         }
 
-        return summary
-
     @classmethod
-    def get_coverage_info(cls, lat: float, lon: float) -> dict:
+    def get_coverage_info(cls, lat: float, lon: float) -> dict[str, Any]:
         """
-        Retorna informações detalhadas sobre cobertura para coordenadas.
+        Return detailed coverage information for coordinates.
 
         Args:
             lat: Latitude
             lon: Longitude
 
         Returns:
-            Dict com informações de cobertura
+            Dict with coverage information
 
-        Exemplo:
-            info = ClimateSourceSelector.get_coverage_info(48.8566, 2.3522)
-            # {
-            #     'location': {'lat': 48.8566, 'lon': 2.3522},
-            #     'recommended_source': 'met_norway',
-            #     'all_sources': ['met_norway', 'nasa_power'],
-            #     'regional_coverage': {
-            #         'europe': True,
-            #         'usa': False
-            #     },
-            #     'source_details': {...}
-            # }
+        Example:
+            >>> info = ClimateSourceSelector.get_coverage_info(
+            ...     48.8566, 2.3522
+            ... )
+            >>> info['recommended_source']
+            'met_norway'
+            >>> info['regional_coverage']['usa']
+            False
         """
         recommended = cls.select_source(lat, lon)
         all_sources = cls.get_all_sources(lat, lon)
+        is_in_nordic = GeographicUtils.is_in_nordic(lat, lon)
 
         return {
             "location": {"lat": lat, "lon": lon},
@@ -292,18 +298,20 @@ class ClimateSourceSelector:
             "all_sources": all_sources,
             "regional_coverage": {
                 "usa": GeographicUtils.is_in_usa(lat, lon),
-                "nordic": GeographicUtils.is_in_nordic(lat, lon),
+                "nordic": is_in_nordic,
             },
             "source_details": {
                 "nws_forecast": {
                     "bbox": GeographicUtils.USA_BBOX,
-                    "description": "USA: -125°W a -66°W, 24°N a 49°N",
+                    "description": "USA: -125°W to -66°W, 24°N to 49°N",
                     "quality": "high",
                     "realtime": True,
                 },
                 "nws_stations": {
                     "bbox": GeographicUtils.USA_BBOX,
-                    "description": "USA stations: -125°W a -66°W, 24°N a 49°N",
+                    "description": (
+                        "USA stations: -125°W to -66°W, 24°N to 49°N"
+                    ),
                     "quality": "high",
                     "realtime": True,
                 },
@@ -313,13 +321,14 @@ class ClimateSourceSelector:
                     "description": (
                         "Global coverage. Nordic region "
                         "(NO/SE/FI/DK/Baltics): "
-                        "1km resolution, hourly updates, radar-corrected "
-                        "precipitation. Rest of world: 9km ECMWF, "
+                        "1km resolution, hourly updates, "
+                        "radar-corrected precipitation. "
+                        "Rest of world: 9km ECMWF, "
                         "temperature/humidity only"
                     ),
                     "quality": {
-                        "nordic": ("very high (1km + radar + crowdsourced)"),
-                        "global": ("medium (9km ECMWF, skip precipitation)"),
+                        "nordic": "very high (1km + radar + crowdsourced)",
+                        "global": "medium (9km ECMWF, skip precipitation)",
                     },
                     "realtime": True,
                 },
@@ -346,30 +355,32 @@ class ClimateSourceSelector:
         }
 
 
-def get_available_sources_for_frontend(lat: float, lon: float) -> dict:
+def get_available_sources_for_frontend(
+    lat: float, lon: float
+) -> dict[str, Any]:
     """
-    Retorna fontes disponíveis formatadas para o frontend.
+    Return available sources formatted for frontend.
 
-    Usado pela interface dash_eto.py para popular dropdown de fontes.
+    Used by dash_eto.py interface to populate source dropdown.
 
     Args:
         lat: Latitude
         lon: Longitude
 
     Returns:
-        Dict com informações formatadas:
+        Dict with formatted information:
         {
             "recommended": "openmeteo_forecast",
             "sources": [
                 {
                     "value": "fusion",
-                    "label": "🔀 Fusão Inteligente (Recomendado)",
-                    "description": "Combina múltiplas fontes para melhor qualidade" # noqa: E501
+                    "label": "🔀 Smart Fusion (Recommended)",
+                    "description": "Combines multiple sources..."
                 },
                 {
                     "value": "openmeteo_forecast",
                     "label": "Open-Meteo Forecast",
-                    "description": "Dados globais em tempo real",
+                    "description": "Real-time global data",
                     "icon": "🌍"
                 },
                 ...
@@ -378,69 +389,87 @@ def get_available_sources_for_frontend(lat: float, lon: float) -> dict:
                 "in_usa": False,
                 "in_nordic": False,
                 "region": "Global"
-            }
+            },
+            "total_sources": 6
         }
+
+    Example:
+        >>> sources = get_available_sources_for_frontend(
+        ...     lat=59.9139, lon=10.7522
+        ... )
+        >>> sources['location_info']['region']
+        'Nordic Region'
+        >>> len(sources['sources'])
+        7  # fusion + 6 individual sources
     """
-    # Detecta região
+    # Detect region
     in_usa = GeographicUtils.is_in_usa(lat, lon)
     in_nordic = GeographicUtils.is_in_nordic(lat, lon)
 
     region = (
         "USA Continental"
         if in_usa
-        else ("Região Nórdica" if in_nordic else "Global")
+        else ("Nordic Region" if in_nordic else "Global")
     )
 
-    # Obtém fonte recomendada e todas disponíveis
+    # Get recommended source and all available
     recommended = ClimateSourceSelector.select_source(lat, lon)
     all_sources = ClimateSourceSelector.get_all_sources(lat, lon)
 
-    # Mapeamento de ícones e descrições
+    # Icon and description mapping
     source_metadata = {
         "openmeteo_archive": {
             "icon": "📚",
             "label": "Open-Meteo Archive",
-            "description": "Dados históricos globais (1990-hoje)",
+            "description": "Global historical data (1990-present)",
         },
         "openmeteo_forecast": {
             "icon": "🌍",
             "label": "Open-Meteo Forecast",
-            "description": "Dados recentes + previsão global",
+            "description": "Recent data + global forecast",
         },
         "nasa_power": {
             "icon": "🛰️",
             "label": "NASA POWER",
-            "description": "Dados históricos globais (1990-hoje)",
+            "description": "Global historical data (1990-present)",
         },
         "met_norway": {
             "icon": "🇳🇴" if in_nordic else "🌐",
-            "label": "MET Norway" + (" (Alta Qualidade)" if in_nordic else ""),
-            "description": "Previsão meteorológica"
-            + (" - Resolução 1km" if in_nordic else " - Global"),
+            "label": (
+                "MET Norway"
+                + (" (High Quality)" if in_nordic else " (Global)")
+            ),
+            "description": (
+                "Weather forecast"
+                + (" - 1km resolution" if in_nordic else " - Global")
+            ),
         },
         "nws_forecast": {
             "icon": "🇺🇸",
             "label": "NWS Forecast",
-            "description": "Previsão oficial NOAA (USA)",
+            "description": "Official NOAA forecast (USA)",
         },
         "nws_stations": {
             "icon": "📡",
             "label": "NWS Stations",
-            "description": "Observações em tempo real (USA)",
+            "description": "Real-time observations (USA)",
         },
     }
 
-    # Monta lista de fontes formatadas
+    # Build formatted source list
     sources_list = [
         {
             "value": "fusion",
-            "label": "🔀 Fusão Inteligente (Recomendado)",
-            "description": f"Combina {len(all_sources)} fontes para melhor qualidade e cobertura",  # noqa: E501
+            "label": "🔀 Smart Fusion (Recommended)",
+            "description": (
+                f"Combines {len(all_sources)} sources for "
+                f"best quality and coverage"
+            ),
             "is_default": True,
         }
     ]
 
-    # Adiciona fontes individuais
+    # Add individual sources
     for source in all_sources:
         if source in source_metadata:
             meta = source_metadata[source]

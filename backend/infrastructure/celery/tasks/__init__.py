@@ -1,16 +1,15 @@
 """
-Celery tasks package.
+Celery tasks para EVAonline.
 
 Tasks disponíveis:
-- visitor_sync: Sincronização de visitantes
-- historical_download: Processamento assíncrono de downloads históricos
+- eto_calculation: Cálculo ETo com progresso em tempo real
+- data_download: Download histórico + envio por email
 """
 
-from backend.infrastructure.celery.tasks.historical_download import (
-    process_historical_download,
-)
-from backend.infrastructure.celery.tasks.visitor_sync import *  # noqa: F401,F403
+from .eto_calculation import calculate_eto_task
+from .data_download import process_historical_download
 
 __all__ = [
+    "calculate_eto_task",
     "process_historical_download",
 ]

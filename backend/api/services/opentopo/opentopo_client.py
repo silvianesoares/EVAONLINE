@@ -327,16 +327,3 @@ class OpenTopoClient:
         except Exception as e:
             logger.error(f"Erro no batch: {e}")
             return []
-
-
-# ✅ NOTE: FAO-56 calculation functions are centralized in ElevationUtils
-# in weather_utils.py to avoid code duplication:
-#
-# from backend.api.services.weather_utils import ElevationUtils
-#
-# pressure = ElevationUtils.calculate_atmospheric_pressure(elevation)
-# gamma = ElevationUtils.calculate_psychrometric_constant(elevation)
-# radiation_adj = ElevationUtils.adjust_solar_radiation_for_elevation(
-#     radiation, elevation
-# )
-# factors = ElevationUtils.get_elevation_correction_factor(elevation)

@@ -11,7 +11,7 @@ IMPORTANT:
 - Locationforecast is GLOBAL (works anywhere)
 - Returns HOURLY data that must be aggregated to daily
 - No separate daily endpoint - aggregation done in backend
-- 5-day forecast limit (standardized)
+- 5-day forecast limit (EVAonline standard)
 
 License: CC-BY 4.0 - Attribution required in all visualizations
 
@@ -28,51 +28,28 @@ Next 6 hours:
 - air_temperature_max: Maximum temperature (°C)
 - air_temperature_min: Minimum temperature (°C)
 - precipitation_amount: 6-hour precipitation (mm)
-
 """
 
-import os
 from datetime import datetime, timedelta
-from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
-import numpy as np
 from loguru import logger
+from pydantic import BaseModel, Field
 
 # Import para detecção regional (fonte única)
 from backend.api.services.geographic_utils import (
     GeographicUtils,
-    TimezoneUtils,
     validate_coordinates,
 )
-from backend.api.services.weather_utils import WeatherConversionUtils
-from pydantic import BaseModel, Field
+from backend.api.services.weather_utils import (
+    METNorwayAggregationUtils,  # Movido de aqui para weather_utils
+    WeatherConversionUtils,
+    CacheUtils,  # Utilitários de cache
+)
 
 
-class METNorwayConfig(BaseModel):
-    """MET Norway API configuration."""
-
-    # Base URL (GLOBAL, not just Europe)
-    base_url: str = os.getenv(
-        "MET_NORWAY_URL",
-        "https://api.met.no/weatherapi/locationforecast/2.0/compact",
-    )
-
-    # Request timeout
-    timeout: int = 30
-
-    # Retry configuration
-    retry_attempts: int = 3
-    retry_delay: float = 1.0
-
-    # User-Agent required (MET Norway requires identification)
-    user_agent: str = os.getenv(
-        "MET_NORWAY_USER_AGENT",
-        "EVAonline/1.0 (https://github.com/angelassilviane/EVAONLINE)",
-    )
-
-
+# Pydantic model (definido no topo para evitar forward references)
 class METNorwayDailyData(BaseModel):
     """Daily aggregated data from MET Norway API.
 
@@ -114,6 +91,55 @@ class METNorwayDailyData(BaseModel):
     source: str = Field(default="met_norway", description="Data source")
 
 
+class METNorwayConfig(BaseModel):
+    """MET Norway API configuration."""
+
+    # Base URL
+    base_url: str = Field(
+        default="https://api.met.no/weatherapi/locationforecast/2.0",
+        description="MET Norway API base URL",
+    )
+
+    # Request timeout
+    timeout: int = 30
+
+    # Retry configuration
+    retry_attempts: int = 3
+    retry_delay: float = 1.0
+
+    # User-Agent required (MET Norway requires identification)
+    user_agent: str = Field(
+        default="EVAonline/1.0 (https://github.com/angelasmcsores/EVAONLINE)",
+        description="User-Agent header (required by MET Norway)",
+    )
+
+    # Altitude parameter (optional, improves forecast accuracy)
+    altitude: float | None = Field(
+        default=None,
+        description=(
+            "Altitude in meters above sea level. "
+            "Improves forecast accuracy when provided. "
+            "Optional parameter for MET Norway API."
+        ),
+    )
+
+    # Connection limits for rate limiting and resource management
+    max_keepalive_connections: int = Field(
+        default=5,
+        description=(
+            "Maximum number of keepalive connections in the pool. "
+            "Helps prevent excessive connections to MET Norway API."
+        ),
+    )
+    max_connections: int = Field(
+        default=10,
+        description=(
+            "Maximum total number of connections. "
+            "Ensures we stay within API rate limits."
+        ),
+    )
+
+
 class METNorwayCacheMetadata(BaseModel):
     """Metadata for cached MET Norway responses."""
 
@@ -126,6 +152,10 @@ class METNorwayCacheMetadata(BaseModel):
     data: list[METNorwayDailyData] = Field(
         ..., description="Cached forecast data"
     )
+
+    # Método para serialização JSON (para Redis)
+    def to_json(self) -> str:
+        return self.model_dump_json()  # Pydantic v2
 
 
 class METNorwayClient:
@@ -172,7 +202,6 @@ class METNorwayClient:
         "air_temperature_min",
         "air_temperature_mean",
         "relative_humidity_mean",
-        # precipitation_sum excluded: use Open-Meteo for better quality
     ]
 
     def __init__(
@@ -195,8 +224,13 @@ class METNorwayClient:
             "Accept": "application/json",
         }
 
+        # Rate limiting usando valores configurados
+        limits = httpx.Limits(
+            max_keepalive_connections=self.config.max_keepalive_connections,
+            max_connections=self.config.max_connections,
+        )
         self.client = httpx.AsyncClient(
-            timeout=self.config.timeout, headers=headers
+            timeout=self.config.timeout, headers=headers, limits=limits
         )
         self.cache = cache
 
@@ -225,27 +259,8 @@ class METNorwayClient:
         return round(lat, 4), round(lon, 4)
 
     @staticmethod
-    def _parse_rfc1123_date(date_str: str | None) -> datetime | None:
-        """
-        Parse RFC 1123 date format from HTTP headers.
-
-        Args:
-            date_str: Date string in RFC 1123 format
-                     (e.g., "Tue, 16 Jun 2020 12:13:49 GMT")
-
-        Returns:
-            Parsed datetime or None if parsing fails
-        """
-        if not date_str:
-            return None
-        try:
-            return parsedate_to_datetime(date_str)
-        except Exception as e:
-            logger.warning(f"Failed to parse date '{date_str}': {e}")
-            return None
-
-    @classmethod
-    def is_in_nordic_region(cls, lat: float, lon: float) -> bool:
+    @staticmethod
+    def is_in_nordic_region(lat: float, lon: float) -> bool:
         """
         Check if coordinates are in Nordic region (MET Nordic 1km dataset).
 
@@ -264,7 +279,13 @@ class METNorwayClient:
         Returns:
             True if in Nordic region (high quality), False otherwise
         """
-        return GeographicUtils.is_in_nordic(lat, lon)
+        in_nordic = GeographicUtils.is_in_nordic(lat, lon)
+        # Log bbox para debug (útil em PostGIS queries)
+        logger.debug(
+            f"Nordic check ({lat}, {lon}): {in_nordic} "
+            f"(bbox: {GeographicUtils.NORDIC_BBOX})"
+        )
+        return in_nordic
 
     @classmethod
     def get_recommended_variables(cls, lat: float, lon: float) -> list[str]:
@@ -300,6 +321,7 @@ class METNorwayClient:
         self,
         lat: float,
         lon: float,
+        altitude: float | None = None,  # [MELHORIA] Novo param opcional da doc
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         timezone: str | None = None,
@@ -313,6 +335,7 @@ class METNorwayClient:
         - If-Modified-Since headers (avoid unnecessary downloads)
         - Dynamic TTL based on Expires header
         - Status code 203/429 handling
+        - Optional altitude for elevation adjustments (as per documentation)
 
         Performs hourly-to-daily aggregation of MET Norway data including:
         - Temperature extremes and means
@@ -325,6 +348,8 @@ class METNorwayClient:
         Args:
             lat: Latitude in decimal degrees (-90 to 90)
             lon: Longitude in decimal degrees (-180 to 180)
+            altitude: Altitude in meters (optional; uses topographic
+                     model as fallback)
             start_date: Start date (default: today)
             end_date: End date (default: start + 5 days)
             timezone: Timezone name (e.g., 'America/Sao_Paulo')
@@ -347,11 +372,24 @@ class METNorwayClient:
         if not start_date:
             start_date = datetime.now()
         if not end_date:
-            end_date = start_date + timedelta(days=5)
+            end_date = start_date + timedelta(
+                days=5
+            )  # EVAonline standard: 5-day forecast
 
         if start_date > end_date:
             msg = "start_date must be <= end_date"
             raise ValueError(msg)
+
+        # ENFORCE: Limite de 5 dias (EVAonline standard)
+        delta_days = (end_date - start_date).days
+        if delta_days > 5:
+            original_end = end_date
+            end_date = start_date + timedelta(days=5)
+            logger.warning(
+                f"⚠️ Forecast limitado a 5 dias: "
+                f"{delta_days} dias solicitados → ajustado para 5 dias "
+                f"(era: {original_end.date()}, agora: {end_date.date()})"
+            )
 
         # Default variables (optimized for location quality)
         if not variables:
@@ -363,34 +401,48 @@ class METNorwayClient:
 
         logger.info(
             f"📍 MET Norway ({region_label}): "
-            f"lat={lat}, lon={lon}, variables={len(variables)}"
+            f"lat={lat}, lon={lon}, altitude={altitude}m, "
+            f"variables={len(variables)}"
         )
 
         # Build cache key
         vars_str = "_".join(sorted(variables)) if variables else "default"
         cache_key = (
-            f"met_lf_{lat}_{lon}_{start_date.date()}_"
-            f"{end_date.date()}_{vars_str}"
+            f"met_lf_{lat}_{lon}_{altitude or 'default'}_"
+            f"{start_date.date()}_{end_date.date()}_{vars_str}"
         )
         cache_metadata_key = f"{cache_key}_metadata"
 
         # 1. Check cache and expiration
+        last_modified = None
         if self.cache:
-            cached_metadata = await self.cache.get(cache_metadata_key)
-            if cached_metadata:
-                # Check if data has expired
-                if (
-                    cached_metadata.expires
-                    and datetime.now() < cached_metadata.expires
-                ):
-                    logger.info("🎯 Cache HIT (not expired): " "MET Norway")
-                    return cached_metadata.data
+            # Assuma cache.get retorna JSON; parse para model
+            cached_json = await self.cache.get(cache_metadata_key)
+            if cached_json:
+                try:
+                    cached_metadata = (
+                        METNorwayCacheMetadata.model_validate_json(cached_json)
+                    )
+                    # Check if data has expired
+                    if (
+                        cached_metadata.expires
+                        and datetime.now(cached_metadata.expires.tzinfo)
+                        < cached_metadata.expires
+                    ):
+                        logger.info(
+                            "🎯 Cache HIT (not expired): " "MET Norway"
+                        )
+                        return cached_metadata.data
 
-                # Data expired - try conditional request with If-Modified-Since
-                logger.info(
-                    "Cache expired, checking with If-Modified-Since..."
-                )
-                last_modified = cached_metadata.last_modified
+                    # Data expired - try conditional request with
+                    # If-Modified-Since
+                    logger.info(
+                        "Cache expired, checking with If-Modified-Since..."
+                    )
+                    last_modified = cached_metadata.last_modified
+                except Exception as e:
+                    logger.warning(f"Cache parse error: {e}")
+                    last_modified = None
             else:
                 last_modified = None
         else:
@@ -399,12 +451,18 @@ class METNorwayClient:
         # 2. Fetch from API (with conditional request if possible)
         logger.info("Querying MET Norway API...")
 
+        # Endpoint completo: base_url + /complete
+        endpoint = f"{self.config.base_url}/complete"
+
         # Request parameters
         params: dict[str, float | str] = {
             "lat": lat,
             "lon": lon,
         }
-
+        if altitude is not None:
+            params["altitude"] = (
+                altitude  # [MELHORIA] Adiciona altitude se fornecido
+            )
         if timezone:
             params["timezone"] = timezone
             logger.warning(
@@ -418,7 +476,7 @@ class METNorwayClient:
                 logger.debug(
                     f"MET Norway request "
                     f"(attempt {attempt + 1}/{self.config.retry_attempts}): "
-                    f"lat={lat}, lon={lon}"
+                    f"lat={lat}, lon={lon}, alt={altitude}"
                 )
 
                 # Add If-Modified-Since header if we have cached data
@@ -428,32 +486,45 @@ class METNorwayClient:
                     logger.debug(f"Using If-Modified-Since: {last_modified}")
 
                 response = await self.client.get(
-                    self.config.base_url, params=params, headers=headers
+                    endpoint, params=params, headers=headers
                 )
 
                 # Handle 304 Not Modified
                 if response.status_code == 304:
                     logger.info("✅ 304 Not Modified: Using cached data")
                     if self.cache:
-                        cached_metadata = await self.cache.get(
-                            cache_metadata_key
-                        )
-                        if cached_metadata:
-                            # Update expiration time
-                            expires_header = response.headers.get("Expires")
-                            if expires_header:
-                                new_expires = self._parse_rfc1123_date(
-                                    expires_header
+                        cached_json = await self.cache.get(cache_metadata_key)
+                        if cached_json:
+                            try:
+                                cached_metadata = (
+                                    METNorwayCacheMetadata.model_validate_json(
+                                        cached_json
+                                    )
                                 )
-                                cached_metadata.expires = new_expires
-                                # Re-cache with updated expiration
-                                ttl = self._calculate_ttl(new_expires)
-                                await self.cache.set(
-                                    cache_metadata_key,
-                                    cached_metadata,
-                                    ttl=ttl,
+                                # Update expiration time
+                                expires_header = response.headers.get(
+                                    "Expires"
                                 )
-                            return cached_metadata.data
+                                if expires_header:
+                                    # Usar CacheUtils
+                                    new_expires = (
+                                        CacheUtils.parse_rfc1123_date(
+                                            expires_header
+                                        )
+                                    )
+                                    cached_metadata.expires = new_expires
+                                    # Re-cache with updated expiration
+                                    ttl = CacheUtils.calculate_cache_ttl(
+                                        new_expires
+                                    )
+                                    await self.cache.set(
+                                        cache_metadata_key,
+                                        cached_metadata.to_json(),  # Serialize
+                                        ttl=ttl,
+                                    )
+                                return cached_metadata.data
+                            except Exception as e:
+                                logger.warning(f"Cache update error: {e}")
                     # Fallback if cache unavailable
                     return []
 
@@ -491,8 +562,8 @@ class METNorwayClient:
                     f"Expires: {expires_header}"
                 )
 
-                # Parse expires timestamp
-                expires_dt = self._parse_rfc1123_date(expires_header)
+                # Parse expires timestamp usando CacheUtils
+                expires_dt = CacheUtils.parse_rfc1123_date(expires_header)
 
                 # Process response
                 data = response.json()
@@ -513,11 +584,13 @@ class METNorwayClient:
                         data=parsed_data,
                     )
 
-                    # Calculate TTL from Expires header (with fallback)
-                    ttl = self._calculate_ttl(expires_dt)
+                    # Calculate TTL from Expires header usando CacheUtils
+                    ttl = CacheUtils.calculate_cache_ttl(expires_dt)
 
                     # Save to cache
-                    await self.cache.set(cache_metadata_key, metadata, ttl=ttl)
+                    await self.cache.set(
+                        cache_metadata_key, metadata.to_json(), ttl=ttl
+                    )  # Serialize
                     logger.debug(
                         f"Cache SAVE: MET Norway"
                         f"(TTL: {ttl}s, expires: {expires_dt})"
@@ -547,34 +620,6 @@ class METNorwayClient:
                 await self._delay_retry()
 
         return []
-
-    @staticmethod
-    def _calculate_ttl(expires: datetime | None) -> int:
-        """
-        Calculate cache TTL from Expires header.
-
-        Args:
-            expires: Expiration datetime from Expires header
-
-        Returns:
-            TTL in seconds (default: 3600 if no Expires header)
-        """
-        if not expires:
-            # Default to 1 hour if no Expires header
-            return 3600
-
-        now = (
-            datetime.now(expires.tzinfo) if expires.tzinfo else datetime.now()
-        )
-        ttl_seconds = int((expires - now).total_seconds())
-
-        # Ensure TTL is positive and reasonable
-        if ttl_seconds <= 0:
-            return 60  # Minimum 1 minute
-        if ttl_seconds > 86400:  # Max 24 hours
-            return 86400
-
-        return ttl_seconds
 
     def _parse_daily_response(
         self,
@@ -619,12 +664,12 @@ class METNorwayClient:
                 logger.warning("MET Norway: no data")
                 return []
 
-            # Usar METNorwayAggregator para processamento
-            aggregator = METNorwayAggregator()
+            # Usar METNorwayAggregationUtils de weather_utils
+            aggregator = METNorwayAggregationUtils()
 
             # 1. Agregar dados horários em diários
             daily_raw_data = aggregator.aggregate_hourly_to_daily(
-                timeseries, start_date, end_date, TimezoneUtils
+                timeseries, start_date, end_date
             )
 
             # 2. Calcular agregações finais
@@ -636,9 +681,9 @@ class METNorwayClient:
             if not aggregator.validate_daily_data(daily_data):
                 logger.warning("Dados diários falharam na validação")
 
-            logger.info(
-                f"MET Norway parsed: {len(daily_data)} days "
-                f"from {len(timeseries)} hourly entries"
+            # Log padronizado
+            self._log_fetch_summary(
+                len(daily_data), start_date, end_date, len(timeseries)
             )
             return daily_data
 
@@ -649,6 +694,34 @@ class METNorwayClient:
             )
             msg = f"Invalid MET Norway response: {e}"
             raise ValueError(msg) from e
+
+    def _log_fetch_summary(
+        self,
+        days_count: int,
+        start_date: datetime,
+        end_date: datetime,
+        hourly_entries: int = 0,
+    ):
+        """
+        Log padronizado para fetches.
+
+        Args:
+            days_count: Número de dias retornados
+            start_date: Data inicial
+            end_date: Data final
+            hourly_entries: Número de entradas horárias processadas
+        """
+        if hourly_entries > 0:
+            logger.info(
+                f"MET Norway: {days_count} days retrieved "
+                f"({start_date.date()} to {end_date.date()}) "
+                f"from {hourly_entries} hourly entries"
+            )
+        else:
+            logger.info(
+                f"MET Norway: {days_count} days retrieved "
+                f"({start_date.date()} to {end_date.date()})"
+            )
 
     async def _delay_retry(self):
         """Wait before retry attempt."""
@@ -664,15 +737,14 @@ class METNorwayClient:
             True if API responds successfully, False otherwise
         """
         try:
-            # Brasília, Brazil (testing with GLOBAL coordinates)
+            # Use endpoint completo e params mínimos
+            endpoint = f"{self.config.base_url}/complete"
             params: dict[str, float | str] = {
-                "lat": -15.7939,
+                "lat": -15.7939,  # Brasília
                 "lon": -47.8828,
             }
 
-            response = await self.client.get(
-                self.config.base_url, params=params
-            )
+            response = await self.client.get(endpoint, params=params)
             response.raise_for_status()
 
             logger.info("MET Norway health check: OK")
@@ -709,7 +781,8 @@ class METNorwayClient:
             "description": (
                 "Global coverage with regional quality optimization"
             ),
-            "forecast_horizon": "5 days ahead (standardized)",
+            # 5 days ahead (EVAonline standard)
+            "forecast_horizon": "5 days ahead (EVAonline standard)",
             "data_type": "Forecast (no historical data)",
             "update_frequency": "Updated every 6 hours",
             "quality_tiers": {
@@ -750,7 +823,7 @@ class METNorwayClient:
         return {
             "data_start_date": None,  # Forecast only
             "max_historical_years": 0,
-            "forecast_horizon_days": 5,
+            "forecast_horizon_days": 9,  # [MELHORIA] Atualizado para 9
             "description": "Forecast data only, global coverage",
             "coverage": "Global",
             "update_frequency": "Every 6 hours",
@@ -772,285 +845,3 @@ def create_met_norway_client(
         Configured METNorwayClient instance
     """
     return METNorwayClient(cache=cache)
-
-
-class METNorwayAggregator:
-    """
-    Classe especializada para agregação de dados horários MET Norway para diários.
-
-    Responsabilidades:
-    - Agregar dados horários em diários com tratamento adequado de NaN
-    - Calcular estatísticas derivadas (vento 10m→2m, precipitação)
-    - Validar consistência dos dados agregados
-    - Logging detalhado do processo de agregação
-    """
-
-    @staticmethod
-    def aggregate_hourly_to_daily(
-        timeseries: list[dict],
-        start_date: datetime,
-        end_date: datetime,
-        timezone_utils: TimezoneUtils,
-    ) -> dict:
-        """
-        Agrega dados horários em registros diários.
-
-        Args:
-            timeseries: Lista de entradas horárias da API
-            start_date: Data inicial do período
-            end_date: Data final do período
-            timezone_utils: Utilitários de timezone para comparações seguras
-
-        Returns:
-            Lista de dicionários com dados diários agregados
-        """
-        from collections import defaultdict
-        from typing import Dict, List, Any
-        from datetime import date
-
-        daily_data: Dict[date, Dict[str, Any]] = defaultdict(
-            lambda: {
-                "temp_values": [],
-                "humidity_values": [],
-                "wind_speed_values": [],
-                "precipitation_1h": [],
-                "precipitation_6h": [],
-                "temp_max_6h": [],
-                "temp_min_6h": [],
-                "count": 0,
-            }
-        )
-
-        # Processar cada entrada horária
-        for entry in timeseries:
-            try:
-                time_str = entry.get("time")
-                if not time_str:
-                    continue
-
-                dt = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
-                date_key = dt.date()
-
-                # Filtrar por período
-                if timezone_utils.compare_dates_safe(dt, start_date, "lt"):
-                    continue
-                if timezone_utils.compare_dates_safe(dt, end_date, "gt"):
-                    continue
-
-                day_data = daily_data[date_key]
-
-                # Extrair valores instantâneos
-                instant = (
-                    entry.get("data", {}).get("instant", {}).get("details", {})
-                )
-
-                # Temperatura
-                temp = instant.get("air_temperature")
-                if temp is not None:
-                    day_data["temp_values"].append(temp)
-
-                # Umidade
-                humidity = instant.get("relative_humidity")
-                if humidity is not None:
-                    day_data["humidity_values"].append(humidity)
-
-                # Velocidade do vento
-                wind_speed = instant.get("wind_speed")
-                if wind_speed is not None:
-                    day_data["wind_speed_values"].append(wind_speed)
-
-                # Precipitação 1h (prioridade)
-                next_1h = (
-                    entry.get("data", {})
-                    .get("next_1_hours", {})
-                    .get("details", {})
-                )
-                precip_1h = next_1h.get("precipitation_amount")
-                if precip_1h is not None:
-                    day_data["precipitation_1h"].append(precip_1h)
-
-                # Precipitação 6h (fallback)
-                next_6h = (
-                    entry.get("data", {})
-                    .get("next_6_hours", {})
-                    .get("details", {})
-                )
-                precip_6h = next_6h.get("precipitation_amount")
-                if precip_6h is not None:
-                    day_data["precipitation_6h"].append(precip_6h)
-
-                # Temperaturas extremas 6h
-                temp_max_6h = next_6h.get("air_temperature_max")
-                if temp_max_6h is not None:
-                    day_data["temp_max_6h"].append(temp_max_6h)
-
-                temp_min_6h = next_6h.get("air_temperature_min")
-                if temp_min_6h is not None:
-                    day_data["temp_min_6h"].append(temp_min_6h)
-
-                day_data["count"] += 1
-
-            except Exception as e:
-                logger.warning(f"Erro processando entrada horária: {e}")
-                continue
-
-        return dict(daily_data)
-
-    @staticmethod
-    def calculate_daily_aggregations(
-        daily_raw_data: dict,
-        weather_utils: WeatherConversionUtils,
-    ) -> list[METNorwayDailyData]:
-        """
-        Calcula agregações diárias finais a partir dos dados brutos.
-
-        Args:
-            daily_raw_data: Dados diários brutos agrupados por data
-            weather_utils: Utilitários para conversões meteorológicas
-
-        Returns:
-            Lista de registros diários agregados
-        """
-        result = []
-
-        for date_key, day_values in daily_raw_data.items():
-            try:
-                # Temperatura média
-                temp_mean = (
-                    float(np.nanmean(day_values["temp_values"]))
-                    if day_values["temp_values"]
-                    else None
-                )
-
-                # Temperaturas extremas: preferir 6h, fallback para instant
-                temp_max = (
-                    float(np.nanmax(day_values["temp_max_6h"]))
-                    if day_values["temp_max_6h"]
-                    else (
-                        float(np.nanmax(day_values["temp_values"]))
-                        if day_values["temp_values"]
-                        else None
-                    )
-                )
-
-                temp_min = (
-                    float(np.nanmin(day_values["temp_min_6h"]))
-                    if day_values["temp_min_6h"]
-                    else (
-                        float(np.nanmin(day_values["temp_values"]))
-                        if day_values["temp_values"]
-                        else None
-                    )
-                )
-
-                # Umidade média
-                humidity_mean = (
-                    float(np.nanmean(day_values["humidity_values"]))
-                    if day_values["humidity_values"]
-                    else None
-                )
-
-                # Velocidade do vento: converter 10m → 2m
-                wind_10m_mean = (
-                    float(np.nanmean(day_values["wind_speed_values"]))
-                    if day_values["wind_speed_values"]
-                    else None
-                )
-                wind_2m_mean = weather_utils.convert_wind_10m_to_2m(
-                    wind_10m_mean
-                )
-
-                if wind_2m_mean is not None:
-                    logger.debug(
-                        f"✅ Vento convertido 10m→2m para {date_key}: "
-                        f"{wind_10m_mean:.2f} → {wind_2m_mean:.2f} m/s"
-                    )
-
-                # Precipitação: priorizar 1h, fallback para 6h
-                if day_values["precipitation_1h"]:
-                    precipitation_sum = float(
-                        np.sum(day_values["precipitation_1h"])
-                    )
-                elif day_values["precipitation_6h"]:
-                    precipitation_sum = float(
-                        np.sum(day_values["precipitation_6h"])
-                    )
-                    logger.debug(
-                        f"Usando precipitação 6h para {date_key}: "
-                        f"{len(day_values['precipitation_6h'])} períodos"
-                    )
-                else:
-                    precipitation_sum = 0.0
-
-                # Criar registro diário
-                daily_record = METNorwayDailyData(
-                    date=date_key,
-                    temp_max=temp_max,
-                    temp_min=temp_min,
-                    temp_mean=temp_mean,
-                    humidity_mean=humidity_mean,
-                    precipitation_sum=precipitation_sum,
-                    wind_speed_2m_mean=wind_2m_mean,
-                )
-
-                result.append(daily_record)
-
-            except Exception as e:
-                logger.warning(f"Erro agregando dia {date_key}: {e}")
-                continue
-
-        # Ordenar por data
-        result.sort(key=lambda x: x.date)
-        return result
-
-    @staticmethod
-    def validate_daily_data(daily_data: list[METNorwayDailyData]) -> bool:
-        """
-        Valida consistência dos dados diários agregados.
-
-        Args:
-            daily_data: Lista de registros diários
-
-        Returns:
-            True se dados são consistentes, False caso contrário
-        """
-        if not daily_data:
-            logger.warning("Dados diários vazios")
-            return False
-
-        issues = []
-
-        for record in daily_data:
-            # Verificar temperaturas
-            if record.temp_max is not None and record.temp_min is not None:
-                if record.temp_max < record.temp_min:
-                    issues.append(
-                        f"Temperatura inconsistente em {record.date}: "
-                        f"max={record.temp_max} < min={record.temp_min}"
-                    )
-
-            # Verificar umidade
-            if record.humidity_mean is not None:
-                if not (0 <= record.humidity_mean <= 100):
-                    issues.append(
-                        f"Umidade fora do range em {record.date}: "
-                        f"{record.humidity_mean}%"
-                    )
-
-            # Verificar precipitação
-            if record.precipitation_sum is not None:
-                if record.precipitation_sum < 0:
-                    issues.append(
-                        f"Precipitação negativa em {record.date}: "
-                        f"{record.precipitation_sum}mm"
-                    )
-
-        if issues:
-            for issue in issues:
-                logger.warning(f"Problema de validação: {issue}")
-            return False
-
-        logger.debug(
-            f"Dados diários validados: {len(daily_data)} registros OK"
-        )
-        return True

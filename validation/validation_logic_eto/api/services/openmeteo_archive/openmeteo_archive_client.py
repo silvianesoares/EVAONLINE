@@ -177,7 +177,20 @@ class OpenMeteoArchiveClient:
             f"({lat:.4f}, {lng:.4f})"
         )
 
-        # 4. Fetch data from Archive API
+        # Check if period is too long (>10 years) and split into chunks
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        days_diff = (end_dt - start_dt).days
+
+        # If period > 3650 days (10 years), split into 5-year chunks
+        if days_diff > 3650:
+            logger.warning(
+                f"📦 Período longo ({days_diff} dias) → "
+                f"Dividindo em chunks de 5 anos"
+            )
+            return await self._fetch_in_chunks(lat, lng, start_date, end_date)
+
+        # 4. Fetch data from Archive API (normal flow for < 10 years)
         try:
             responses = self.client.weather_api(
                 self.config.BASE_URL, params=params
@@ -281,6 +294,202 @@ class OpenMeteoArchiveClient:
         except Exception as e:
             logger.error(f"Archive API error: {str(e)}")
             raise
+
+    async def _fetch_in_chunks(
+        self, lat: float, lng: float, start_date: str, end_date: str
+    ) -> Dict[str, Any]:
+        """
+        Fetch data in 5-year chunks to avoid buffer overflow errors.
+
+        Args:
+            lat: Latitude
+            lng: Longitude
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+
+        Returns:
+            Merged climate data from all chunks
+        """
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+
+        # Split into 5-year chunks (1826 days)
+        chunk_size_days = 1826
+        chunks = []
+        current_start = start_dt
+
+        while current_start < end_dt:
+            current_end = min(
+                current_start + timedelta(days=chunk_size_days - 1), end_dt
+            )
+            chunks.append(
+                {
+                    "start": current_start.strftime("%Y-%m-%d"),
+                    "end": current_end.strftime("%Y-%m-%d"),
+                }
+            )
+            current_start = current_end + timedelta(days=1)
+
+        logger.info(f"📦 Fetching {len(chunks)} chunks (5 anos cada)")
+
+        # Fetch all chunks
+        all_results = []
+        for i, chunk in enumerate(chunks, 1):
+            logger.info(
+                f"  📥 Chunk {i}/{len(chunks)}: "
+                f"{chunk['start']} → {chunk['end']}"
+            )
+
+            # Recursive call with smaller period
+            params = {
+                "latitude": lat,
+                "longitude": lng,
+                "start_date": chunk["start"],
+                "end_date": chunk["end"],
+                "daily": self.config.DAILY_VARIABLES,
+                "models": "best_match",
+                "timezone": "auto",
+                "wind_speed_unit": "ms",
+            }
+
+            try:
+                responses = self.client.weather_api(
+                    self.config.BASE_URL, params=params
+                )
+                response = responses[0]
+
+                # Extract data
+                daily = response.Daily()
+                time_start = daily.Time()
+                time_end = daily.TimeEnd()
+                time_interval = daily.Interval()
+
+                if time_start == time_end:
+                    timestamps = [int(time_start)]
+                else:
+                    timestamps = list(
+                        range(
+                            int(time_start), int(time_end), int(time_interval)
+                        )
+                    )
+
+                dates = [datetime.fromtimestamp(ts) for ts in timestamps]
+                climate_data = {"dates": dates}
+
+                for j, var_name in enumerate(self.config.DAILY_VARIABLES):
+                    try:
+                        values = daily.Variables(j).ValuesAsNumpy()
+                        if hasattr(values, "tolist"):
+                            climate_data[var_name] = values.tolist()
+                        else:
+                            climate_data[var_name] = [float(values)]
+                    except Exception as e:
+                        logger.warning(
+                            f"Variable {var_name} not available: {e}"
+                        )
+                        climate_data[var_name] = [None] * len(dates)
+
+                # Convert wind 10m to 2m
+                if "wind_speed_10m_mean" in climate_data:
+                    wind_10m = climate_data["wind_speed_10m_mean"]
+                    wind_2m = [
+                        (
+                            WeatherConversionUtils.convert_wind_10m_to_2m(w)
+                            if w is not None
+                            else None
+                        )
+                        for w in wind_10m
+                    ]
+                    climate_data["wind_speed_2m_mean"] = wind_2m
+
+                # Get location metadata from first chunk
+                if i == 1:
+                    location = {
+                        "latitude": response.Latitude(),
+                        "longitude": response.Longitude(),
+                        "elevation": response.Elevation(),
+                        "timezone": response.Timezone(),
+                        "timezone_abbreviation": (
+                            response.TimezoneAbbreviation()
+                        ),
+                        "utc_offset_seconds": response.UtcOffsetSeconds(),
+                    }
+
+                all_results.append(climate_data)
+                logger.success(f"  ✅ Chunk {i}: {len(dates)} dias")
+
+                # Rate limiting: aguardar 12s entre chunks
+                # 600 calls/min máximo → 5 chunks/min seguro (12s cada)
+                if i < len(chunks):  # Não aguardar após último chunk
+                    import time
+
+                    time.sleep(12)
+                    logger.debug("  ⏸️ Aguardando 12s (rate limit: 600/min)")
+
+            except Exception as e:
+                logger.error(f"  ❌ Chunk {i} falhou: {str(e)}")
+                # Se falhar por rate limit, aguardar 60s e tentar novamente
+                if "request limit exceeded" in str(e).lower():
+                    import time
+
+                    logger.warning(
+                        "  ⏸️ Rate limit atingido! Aguardando 60s..."
+                    )
+                    time.sleep(60)
+                    logger.info(f"  🔄 Retry chunk {i}...")
+                    # Não fazer raise, continuar para próximo chunk
+                    continue
+                raise
+
+        # Merge all chunks
+        logger.info("🔗 Mesclando chunks...")
+        merged_data = {"dates": []}
+
+        for var_name in ["dates"] + self.config.DAILY_VARIABLES:
+            if var_name == "dates":
+                for chunk_data in all_results:
+                    merged_data["dates"].extend(chunk_data["dates"])
+            else:
+                merged_data[var_name] = []
+                for chunk_data in all_results:
+                    if var_name in chunk_data:
+                        merged_data[var_name].extend(chunk_data[var_name])
+
+        # Add wind_speed_2m_mean
+        if "wind_speed_2m_mean" in all_results[0]:
+            merged_data["wind_speed_2m_mean"] = []
+            for chunk_data in all_results:
+                merged_data["wind_speed_2m_mean"].extend(
+                    chunk_data["wind_speed_2m_mean"]
+                )
+
+        metadata = {
+            "api": "archive",
+            "url": self.config.BASE_URL,
+            "data_points": len(merged_data["dates"]),
+            "cache_ttl_hours": 24,
+            "chunked": True,
+            "num_chunks": len(chunks),
+        }
+
+        result = {
+            "location": location,
+            "climate_data": merged_data,
+            "metadata": metadata,
+        }
+
+        logger.success(
+            f"✅ Merged {len(chunks)} chunks → {len(merged_data['dates'])} dias"
+        )
+
+        # Cache the merged result
+        if self.cache:
+            ttl = 86400
+            cache_key = self._get_cache_key(lat, lng, start_date, end_date)
+            await self.cache.set(cache_key, result, ttl=ttl)
+            logger.debug(f"💾 Cached merged result with TTL {ttl}s")
+
+        return result
 
     def _get_cache_key(
         self, lat: float, lng: float, start_date: str, end_date: str

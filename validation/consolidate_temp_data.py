@@ -9,7 +9,7 @@ from loguru import logger
 
 
 BASE_DIR = Path(__file__).parent
-TEMP_DIR = BASE_DIR / "temp"
+TEMP_DIR = BASE_DIR.parent / "temp"  # temp/ na raiz do projeto
 CACHE_DIR = BASE_DIR / "results/brasil/cache"
 INFO_CITIES = BASE_DIR / "data_validation/data/info_cities.csv"
 
@@ -23,8 +23,28 @@ def consolidate_city_data(city_name: str, lat: float, lon: float):
     logger.info(f"🔄 Consolidando {city_name}...")
 
     # Buscar arquivos no formato: historical_final_{year}_{lat}_{lon}.csv
-    pattern = f"historical_final_*_{lat}_{lon}.csv"
-    files = sorted(TEMP_DIR.glob(pattern))
+    # Usar busca mais flexível porque float pode ter muitas casas decimais
+    all_files = list(TEMP_DIR.glob("historical_final_*.csv"))
+
+    # Filtrar arquivos que correspondem às coordenadas (com tolerância)
+    files = []
+    for file in all_files:
+        parts = file.stem.split("_")
+        # Formato: historical_final_YEAR_LAT_LON
+        if len(parts) >= 5:
+            try:
+                file_lat = float(parts[3])  # Índice 3 é LAT
+                file_lon = float(parts[4])  # Índice 4 é LON
+                # Verificar se coordenadas batem (tolerância de 0.0001 graus)
+                if (
+                    abs(file_lat - lat) < 0.0001
+                    and abs(file_lon - lon) < 0.0001
+                ):
+                    files.append(file)
+            except (ValueError, IndexError):
+                continue
+
+    files = sorted(files)
 
     if not files:
         logger.warning(f"  ⚠️  Nenhum arquivo encontrado para {city_name}")

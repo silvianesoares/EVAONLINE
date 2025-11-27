@@ -1,9 +1,10 @@
 # ===========================================
-# GITIGNORE - EVAonline (CLEAN AND ORGANIZED)
+# GITIGNORE - EVAonline
 # ===========================================
-# Última atualização: 2025-01-14
-# Foco: Mapa Mundial com Fusão de Dados (NASA POWER, MET Norway, NWS)
-# MATOPIBA removido em: 2025-01-14
+# Última atualização: 2025-11-27
+# Projeto: EVAonline - Reference Evapotranspiration System
+# Repository: https://github.com/angelasilviane/EVAONLINE
+# License: AGPL-3.0-or-later
 
 # ===========================================
 # Python
@@ -38,6 +39,7 @@ MANIFEST
 .env
 .env.*
 !.env.example
+!.env.docker
 .venv/
 venv/
 ENV/
@@ -61,11 +63,32 @@ coverage.xml
 .pytest_cache/
 
 # ===========================================
+# Validation Dataset (EVAonline_validation_v1.0.0)
+# ===========================================
+# Ignore generated outputs but keep reference data
+EVAonline_validation_v1.0.0/data/1_figures/*.png
+EVAonline_validation_v1.0.0/data/1_figures/*.pdf
+EVAonline_validation_v1.0.0/data/6_validation_full_pipeline/*/plots/*.png
+EVAonline_validation_v1.0.0/data/6_validation_full_pipeline/*/plots/*.pdf
+EVAonline_validation_v1.0.0/data/7_comparison_all_sources/plots/*.png
+EVAonline_validation_v1.0.0/data/7_comparison_all_sources/plots/*.pdf
+
+# Keep reference data and summaries
+!EVAonline_validation_v1.0.0/data/info_cities.csv
+!EVAonline_validation_v1.0.0/data/3_combined_datasets/*.csv
+!EVAonline_validation_v1.0.0/data/4_eto_nasa_only/*.csv
+!EVAonline_validation_v1.0.0/data/4_eto_openmeteo_only/*.csv
+!EVAonline_validation_v1.0.0/data/6_validation_full_pipeline/*/FINAL_SUMMARY.csv
+!EVAonline_validation_v1.0.0/data/7_comparison_all_sources/SUMMARY_BY_SOURCE.csv
+!EVAonline_validation_v1.0.0/data/7_comparison_all_sources/COMPARISON_ALL_SOURCES.csv
+
+# ===========================================
 # Archive and Deprecated Files
 # ===========================================
-# Documentação arquivada (MATOPIBA, ETo Horária)
+# Documentação arquivada
 docs/archive/
-docs/archive/matopiba/
+docs/temp/
+docs/drafts/
 
 # Testes antigos/deprecados
 /tests/deprecated/
@@ -136,6 +159,20 @@ backend/.pytest_cache/
 backend/logs/*.log
 
 # ===========================================
+# Backup Files
+# ===========================================
+*.bak
+*.backup
+*.old
+*~
+*.sql.backup
+*.dump.backup
+*_backup.py
+*_old.py
+README_backup.md
+README.backup
+
+# ===========================================
 # Large Data Files
 # ===========================================
 data/FILE_CSV/
@@ -143,6 +180,12 @@ data/FILE_GEOJSON/
 data/SHAPEFILE_CLIMA_BR/
 data/large_files/
 data/backups/
+data/temp/
+data/cache/
+
+# Xavier reference data (keep for validation)
+!data/original_data/eto_xavier_csv/*.csv
+!EVAonline_validation_v1.0.0/data/original_data/eto_xavier_csv/*.csv
 
 # Shapefiles MATOPIBA (removidos)
 data/shapefile/

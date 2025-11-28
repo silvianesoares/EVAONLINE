@@ -25,7 +25,6 @@ import asyncio
 from datetime import datetime
 from typing import List, Optional
 
-import pandas as pd
 from loguru import logger
 from pydantic import BaseModel
 
@@ -43,13 +42,17 @@ class NWSDailyForecastRecord(BaseModel):
 
     Attributes:
         date: Data no formato YYYY-MM-DD (string)
-        temp_max: Temperatura maxima (°C)
-        temp_min: Temperatura minima (°C)
+        temp_max: Temperatura maxima (°C) - oficial NWS
+        temp_min: Temperatura minima (°C) - oficial NWS
         temp_mean: Temperatura media (°C)
         humidity_mean: Umidade relativa media (%)
-        wind_speed_max: Velocidade maxima do vento (m/s)
-        wind_speed_mean: Velocidade media do vento (m/s)
-        precipitation_sum: Precipitacao total (mm)
+        wind_speed_mean: Velocidade media do vento a 2m (m/s) - FAO-56
+        dewpoint_mean: Ponto de orvalho medio (°C) - para ETo
+        pressure_mean: Pressao atmosferica media (hPa) - para ETo
+        solar_radiation: Radiacao solar (MJ/m²/dia) - USA-ASOS calibrado
+        precipitation_sum: Precipitacao total (mm) - ESTIMATIVA
+        precipitation_probability: Probabilidade media de precipitacao (%)
+        short_forecast: Previsao textual curta
     """
 
     date: str
@@ -57,29 +60,39 @@ class NWSDailyForecastRecord(BaseModel):
     temp_min: Optional[float] = None
     temp_mean: Optional[float] = None
     humidity_mean: Optional[float] = None
-    wind_speed_max: Optional[float] = None
     wind_speed_mean: Optional[float] = None
+    dewpoint_mean: Optional[float] = None
+    pressure_mean: Optional[float] = None
+    solar_radiation: Optional[float] = None
     precipitation_sum: Optional[float] = None
+    precipitation_probability: Optional[float] = None
+    short_forecast: Optional[str] = None
 
 
 class NWSDailyForecastSyncAdapter:
     """
     Adapter síncrono para NWS Forecast com agregação diária.
 
-    Converte previsões horárias em dados diários agregados de forma
-    síncrona. Gerencia event loop automaticamente para
-    compatibilidade com código síncrono.
+    Wrapper síncrono para NWSForecastClient (async) que já fornece
+    dados diários agregados com todas as variáveis ETo:
+    - Temperaturas oficiais NWS (max/min de períodos 12h/24h)
+    - Radiação solar (USA-ASOS calibrado com correção de vapor)
+    - Ponto de orvalho e pressão atmosférica
+    - Vento a 2m (FAO-56 convertido)
+    - Precipitação (estimativa, pode superestimar)
 
     Este adapter:
         - Wraps NWSForecastClient (async) em interface síncrona
         - Cria/reusa event loop conforme necessário
-        - Agrega dados horários em diários usando pandas
+        - Usa get_daily_forecast_data() do client (sem pandas)
+        - Filtra dados por período solicitado
         - Remove timezone para compatibilidade com datas naive
 
     Métodos:
         - health_check_sync(): Verifica disponibilidade da API
         - get_daily_data_sync(): Obtém dados diários agregados
         - get_attribution(): Retorna informações de atribuição
+        - get_info(): Informações gerais da API
 
     Exemplo:
         adapter = NWSDailyForecastSyncAdapter()
@@ -88,6 +101,7 @@ class NWSDailyForecastSyncAdapter:
                 39.7392, -104.9903,
                 start_date, end_date
             )
+            print(f"Rs = {data[0].solar_radiation} MJ/m²/day")
     """
 
     def __init__(self):
@@ -109,17 +123,23 @@ class NWSDailyForecastSyncAdapter:
             if adapter.health_check_sync():
                 print("NWS API disponível")
         """
-        try:
-            # Criar event loop se não existir
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
 
-            # Executar health check de forma síncrona
-            result = loop.run_until_complete(self.client.health_check())
-            return result.get("status") == "ok"
+        async def _health_check_async():
+            client = create_nws_forecast_client()
+            try:
+                result = await client.health_check()
+                return result.get("status") == "ok"
+            finally:
+                await client.close()
+
+        try:
+            # Sempre criar novo event loop para evitar conflitos
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(_health_check_async())
+            finally:
+                loop.close()
         except Exception as e:
             logger.error(f"NWS Forecast health check failed: {e}")
             return False
@@ -129,98 +149,55 @@ class NWSDailyForecastSyncAdapter:
     ) -> List[NWSDailyForecastRecord]:
         """
         Obter dados diários agregados de forma assíncrona.
-        """
-        try:
-            # Obter dados horários do forecast
-            forecast_data = await self.client.get_forecast_data(lat, lon)
 
-            if not forecast_data:
+        Agora usa get_daily_forecast_data() do client que já retorna
+        dados agregados com todas as variáveis ETo incluindo:
+        - Temperaturas oficiais NWS (max/min de períodos 12h/24h)
+        - Radiação solar estimada (método USA-ASOS calibrado)
+        - Ponto de orvalho e pressão atmosférica
+        - Vento a 2m (FAO-56 convertido)
+        """
+        # Criar novo client para este request (evita conflitos de loop)
+        client = create_nws_forecast_client()
+        try:
+            # Client já retorna dados diários agregados!
+            daily_forecast = await client.get_daily_forecast_data(lat, lon)
+
+            if not daily_forecast:
                 logger.warning(f"Nenhum dado de forecast para ({lat}, {lon})")
                 return []
 
-            # Converter para DataFrame para agregação
-            records = []
-            for item in forecast_data:
-                records.append(
-                    {
-                        "timestamp": pd.to_datetime(item.timestamp),
-                        "temp_celsius": item.temp_celsius,
-                        "humidity_percent": item.humidity_percent,
-                        "wind_speed_ms": item.wind_speed_ms,
-                        "precipitation_mm": item.precip_mm,
-                    }
-                )
-
-            if not records:
-                return []
-
-            df = pd.DataFrame(records)
-            df.set_index("timestamp", inplace=True)
-
-            # Remover timezone do index para comparação
-            # (start_date e end_date são naive datetime)
-            df.index = df.index.tz_localize(None)  # type: ignore
-
             # Filtrar período solicitado
-            mask = (df.index >= start_date) & (df.index <= end_date)
-            df_filtered = df[mask]
+            filtered_data = []
+            for day in daily_forecast:
+                # Remover timezone para comparação
+                day_date = day.date.replace(tzinfo=None)
 
-            if df_filtered.empty:
-                logger.warning("Nenhum dado no período para NWS Forecast")
-                return []
-
-            # Agregar por dia
-            daily_data = []
-
-            # Agregar por dia usando resample
-            daily_data = []
-
-            # Resample para dados diários
-            daily_grouped = df_filtered.resample("D")
-
-            for date, group in daily_grouped:
-                if len(group) > 0:  # Só processar se há dados
-                    date_str = str(date)[:10]  # YYYY-MM-DD
-
-                # Calcular agregados diários
-                temp_col = group["temp_celsius"]
-                humid_col = group["humidity_percent"]
-                wind_col = group["wind_speed_ms"]
-                precip_col = group["precipitation_mm"]
-
-                record = NWSDailyForecastRecord(
-                    date=date_str,
-                    temp_max=(
-                        temp_col.max() if temp_col.notna().any() else None
-                    ),
-                    temp_min=(
-                        temp_col.min() if temp_col.notna().any() else None
-                    ),
-                    temp_mean=(
-                        temp_col.mean() if temp_col.notna().any() else None
-                    ),
-                    humidity_mean=(
-                        humid_col.mean() if humid_col.notna().any() else None
-                    ),
-                    wind_speed_max=(
-                        wind_col.max() if wind_col.notna().any() else None
-                    ),
-                    wind_speed_mean=(
-                        wind_col.mean() if wind_col.notna().any() else None
-                    ),
-                    precipitation_sum=(
-                        precip_col.sum() if precip_col.notna().any() else None
-                    ),
-                )
-
-                daily_data.append(record)
+                if start_date.date() <= day_date.date() <= end_date.date():
+                    record = NWSDailyForecastRecord(
+                        date=day.date.strftime("%Y-%m-%d"),
+                        temp_max=day.temp_max_celsius,
+                        temp_min=day.temp_min_celsius,
+                        temp_mean=day.temp_mean_celsius,
+                        humidity_mean=day.humidity_mean_percent,
+                        wind_speed_mean=day.wind_speed_mean_ms,
+                        dewpoint_mean=day.dewpoint_mean_celsius,
+                        pressure_mean=day.pressure_mean_hpa,
+                        solar_radiation=day.solar_radiation_mj_m2_day,
+                        precipitation_sum=day.precip_total_mm,
+                        precipitation_probability=(
+                            day.probability_precip_mean_percent
+                        ),
+                        short_forecast=day.short_forecast,
+                    )
+                    filtered_data.append(record)
 
             logger.info(
-                f"NWS Forecast: agregados {len(daily_data)} dias "
-                f"de dados horários para ({lat}, {lon})"
+                f"NWS Forecast: {len(filtered_data)} dias no período "
+                f"solicitado para ({lat}, {lon})"
             )
 
-            return daily_data
+            return filtered_data
 
         except ValueError:
             # Re-raise validation errors (coverage, dates, etc)
@@ -228,6 +205,9 @@ class NWSDailyForecastSyncAdapter:
         except Exception as e:
             logger.error(f"Erro ao processar dados NWS Forecast: {e}")
             return []
+        finally:
+            # Fechar client para liberar recursos
+            await client.close()
 
     def get_daily_data_sync(
         self, lat: float, lon: float, start_date: datetime, end_date: datetime
@@ -236,6 +216,15 @@ class NWSDailyForecastSyncAdapter:
         Wrapper síncrono para obter dados diários agregados.
         Compatível com Celery (não-async).
 
+        Retorna dados diários com TODAS as variáveis para ETo:
+        - Temperaturas oficiais NWS (max/min/mean)
+        - Umidade relativa média
+        - Vento médio a 2m (FAO-56)
+        - Ponto de orvalho médio
+        - Pressão atmosférica média
+        - Radiação solar (USA-ASOS calibrado)
+        - Precipitação total (estimativa)
+
         Args:
             lat: Latitude do ponto
             lon: Longitude do ponto
@@ -243,17 +232,20 @@ class NWSDailyForecastSyncAdapter:
             end_date: Data final
 
         Returns:
-            Lista de registros diários agregados
+            Lista de registros diários agregados com variáveis ETo
         """
         try:
-            # Executar método assíncrono de forma síncrona
+            # Criar novo event loop (evita "Event loop is closed")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(
-                self._get_daily_data_async(lat, lon, start_date, end_date)
-            )
-            loop.close()
-            return result
+            try:
+                result = loop.run_until_complete(
+                    self._get_daily_data_async(lat, lon, start_date, end_date)
+                )
+                return result
+            finally:
+                # Garantir limpeza do loop
+                loop.close()
         except Exception as e:
             logger.error(f"NWS Forecast sync wrapper failed: {e}")
             return []
@@ -271,3 +263,40 @@ class NWSDailyForecastSyncAdapter:
             f"License: {attr['license']} | "
             f"API: {attr['api_docs']}"
         )
+
+    def get_info(self) -> dict:
+        """
+        Get general information about the NWS Forecast API.
+
+        Returns:
+            dict: API information including name, coverage, license,
+                attribution, and ETo variables
+        """
+        return {
+            "api_name": "National Weather Service (NOAA)",
+            "coverage": "USA Continental + Alaska/Hawaii",
+            "coverage_details": {
+                "continental": "-125°W to -66°W, 24°N to 49°N",
+                "extended": "Alaska/Hawaii (18°N to 71°N)",
+            },
+            "license": "US Government Public Domain",
+            "attribution": self.get_attribution(),
+            "forecast_period": "5 days",
+            "temporal_resolution": "Hourly (aggregated to daily by client)",
+            "eto_variables": [
+                "Temperature (official max/min from NWS)",
+                "Humidity (mean)",
+                "Wind speed at 2m (FAO-56 converted)",
+                "Dewpoint (mean)",
+                "Atmospheric pressure (estimated from elevation)",
+                "Solar radiation (USA-ASOS calibrated with vapor correction)",
+                "Precipitation (estimate, may be overestimated)",
+            ],
+            "solar_radiation_method": (
+                "Ångström-Prescott (USA-ASOS a=0.20, b=0.79)"
+            ),
+            "solar_radiation_reference": (
+                "Belcher & DeGaetano (2007) Solar Energy 81(3):329-345 "
+                "DOI:10.1016/j.solener.2006.07.003"
+            ),
+        }

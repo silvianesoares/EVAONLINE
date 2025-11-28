@@ -1,6 +1,6 @@
 {
-    "title": "EVAOnline Validation Dataset: Kalman Fusion System for Reference Evapotranspiration in Brazil (2017-2024)",
-    "description": "Complete validation dataset for EVAOnline, an open-source Kalman fusion system for reference evapotranspiration (ETo) estimation. Includes daily ETo values from four sources: (1) Xavier et al. reference data (1961-2024), (2) NASA POWER reanalysis, (3) Open-Meteo Archive, and (4) EVAOnline Kalman fusion results. Data covers 17 Brazilian cities in the MATOPIBA region with over 186,000 daily observations. EVAOnline demonstrates MAE=0.48 mm/day and PBIAS=0.6%, outperforming NASA POWER (MAE=1.09, PBIAS=23.2%) and Open-Meteo (MAE=0.67, PBIAS=8.8%).",
+    "title": "EVAOnline Validation Dataset: Kalman Fusion System for Reference Evapotranspiration in Brazil (1991-2020)",
+    "description": "Complete validation dataset for EVAOnline, an open-source Kalman fusion system for reference evapotranspiration (ETo) estimation integrating 6 climate APIs (NASA POWER, Open-Meteo Archive/Forecast, Met Norway Locationforecast, NWS USA Forecast/Stations). This validation dataset evaluates ETo accuracy using two global reanalysis sources: (1) Xavier et al. BR-DWGD reference data (Brazilian Daily Weather Gridded Data, 1961-2024, 0.1° resolution, 3,625+ weather stations), (2) NASA POWER reanalysis (MERRA-2, 0.5° resolution), (3) Open-Meteo Archive (ERA5-Land, ~9km resolution), and (4) EVAOnline Kalman fusion results combining NASA POWER and Open-Meteo. Data covers 17 Brazilian cities in the MATOPIBA region plus Piracicaba (São Paulo) with 186,287 daily observations spanning 1991-2020. EVAOnline demonstrates superior performance with MAE=0.42 mm/day, PBIAS=0.71%, and KGE=0.814, significantly outperforming NASA POWER (MAE=0.84, PBIAS=15.78%, KGE=0.411) and Open-Meteo (MAE=0.86, PBIAS=13.02%, KGE=0.432). The hybrid Kalman fusion achieves 38.7-50.8% MAE reduction and 91.4-95.5% BIAS reduction compared to individual sources.",
     "version": "1.0.0",
     "upload_type": "dataset",
     "access_right": "open",
@@ -12,7 +12,6 @@
         "data fusion",
         "MATOPIBA",
         "Brazil",
-        "agricultural modeling",
         "open-source",
         "reanalysis",
         "climate data",
@@ -24,21 +23,33 @@
     ],
     "creators": [
         {
-            "name": "Silviane, Angela",
-            "affiliation": "Universidade Federal do Tocantins",
-            "orcid": "0000-0000-0000-0000"
+            "name": "Soares, Ângela Silviane Moura Cunha",
+            "affiliation": "Escola Superior de Agricultura Luiz de Queiroz da Universidade de São Paulo - USP, Brazil",
+            "orcid": "0000-0002-1253-7193"
+        },
+        {
+            "name": "Maciel, Carlos Dias",
+            "affiliation": "Universidade Estadual Paulista - Unesp, Brazil",
+            "orcid": "0000-0003-0137-6678"
+        },
+        {
+            "name": "Marques, Patricia Angélica Alves",
+            "affiliation": "Escola Superior de Agricultura Luiz de Queiroz da Universidade de São Paulo - USP, Brazil",
+            "orcid": "0000-0002-6818-4833"
         }
     ],
     "contributors": [],
     "references": [
-        "Xavier, A. C., King, C. W., & Scanlon, B. R. (2016). Daily gridded meteorological variables in Brazil (1980-2013). International Journal of Climatology, 36(6), 2644-2659. https://doi.org/10.1002/joc.4518",
-        "Xavier, A. C., Scanlon, B. R., & King, C. W. (2022). An update of Xavier, Scanlon, and King (2016) daily precipitation gridded data set for the Brazil. International Journal of Climatology, 42(16), 9248-9259. https://doi.org/10.1002/joc.7731 | https://rmets.onlinelibrary.wiley.com/doi/10.1002/joc.7731",
+        "Zippenfenig, P. (2023). Open-Meteo.com Weather API [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.14582479",
+        "OpenTopoData: Open Elevation API. https://www.opentopodata.org/",
+        "Met Norway Locationforecast API. https://api.met.no/weatherapi/locationforecast/2.0/documentation",
+        "National Weather Service (NWS) USA Weather API. https://www.weather.gov/documentation/services-web-api",
         "Allen, R. G., Pereira, L. S., Raes, D., & Smith, M. (1998). Crop evapotranspiration: Guidelines for computing crop water requirements. FAO Irrigation and Drainage Paper No. 56. Rome: Food and Agriculture Organization of the United Nations.",
         "Xavier, A. C. Brazilian Daily Weather Gridded Data. Available at: https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data"
     ],
     "related_identifiers": [
         {
-            "identifier": "https://github.com/angelasilviane/EVAONLINE",
+            "identifier": "https://github.com/silvianesoares/EVAONLINE",
             "relation": "isSupplementTo",
             "scheme": "url"
         },
@@ -48,41 +59,39 @@
             "scheme": "url"
         },
         {
-            "identifier": "10.1002/joc.4518",
-            "relation": "cites",
-            "scheme": "doi"
-        },
-        {
-            "identifier": "10.1002/joc.7731",
-            "relation": "cites",
-            "scheme": "doi"
-        },
-        {
             "identifier": "https://power.larc.nasa.gov/",
             "relation": "isReferencedBy",
             "scheme": "url"
         },
         {
+            "identifier": "10.5281/zenodo.14582479",
+            "relation": "cites",
+            "scheme": "doi"
+        },
+        {
             "identifier": "https://open-meteo.com/en/docs/historical-weather-api",
             "relation": "isReferencedBy",
             "scheme": "url"
-        }
-    ],
-    "subjects": [
-        {
-            "term": "Hydrology",
-            "scheme": "url",
-            "identifier": "http://id.loc.gov/authorities/subjects/sh85063455"
         },
         {
-            "term": "Evapotranspiration",
-            "scheme": "url",
-            "identifier": "http://id.loc.gov/authorities/subjects/sh85046087"
+            "identifier": "https://www.opentopodata.org/",
+            "relation": "isReferencedBy",
+            "scheme": "url"
         },
         {
-            "term": "Agricultural meteorology",
-            "scheme": "url",
-            "identifier": "http://id.loc.gov/authorities/subjects/sh85002334"
+            "identifier": "https://open-meteo.com/en/docs",
+            "relation": "isReferencedBy",
+            "scheme": "url"
+        },
+        {
+            "identifier": "https://api.met.no/weatherapi/locationforecast/2.0/documentation",
+            "relation": "isReferencedBy",
+            "scheme": "url"
+        },
+        {
+            "identifier": "https://www.weather.gov/documentation/services-web-api",
+            "relation": "isReferencedBy",
+            "scheme": "url"
         }
     ],
     "communities": [
@@ -99,5 +108,5 @@
             "place": "MATOPIBA Region, Brazil"
         }
     ],
-    "method": "Daily ETo calculated using FAO-56 Penman-Monteith equation. Kalman fusion combines NASA POWER (MERRA-2 reanalysis, 0.5° resolution) and Open-Meteo (ERA5-Land reanalysis, ~9 km resolution) data with dynamic bias correction and covariance estimation. Validation against Xavier et al. reference dataset (0.25° resolution, 3,625+ weather stations) using Brazil-specific limits (Temperature: -30 to 50°C, Precipitation: 0-450mm, Radiation: 0-40 MJ/m², Wind: 0-100 m/s). NASA POWER data accessed via API (https://power.larc.nasa.gov/api/), Open-Meteo via Historical Weather API (https://open-meteo.com/en/docs/historical-weather-api)."
+    "method": "Daily ETo calculated using FAO-56 Penman-Monteith equation. Kalman fusion combines NASA POWER (MERRA-2 reanalysis, 0.5° resolution) and Open-Meteo (ERA5-Land reanalysis, ~9 km resolution) data with dynamic bias correction and covariance estimation. Validation against Xavier et al. BR-DWGD reference dataset (Brazilian Daily Weather Gridded Data, 0.1° x 0.1° resolution, 1961/01/01-2024/03/20, 3,625+ weather stations) using Brazil-specific limits (Temperature: -30 to 50°C, Precipitation: 0-450mm, Radiation: 0-40 MJ/m², Wind: 0-100 m/s). NASA POWER data accessed via API (https://power.larc.nasa.gov/api/), Open-Meteo via Historical Weather API (https://open-meteo.com/en/docs/historical-weather-api). Xavier et al. dataset: https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data"
 }

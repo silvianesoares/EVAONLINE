@@ -26,7 +26,7 @@ from typing import Any
 
 from loguru import logger
 
-from validation_logic_eto.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.geographic_utils import GeographicUtils
 
 from .met_norway_client import (
     METNorwayDailyData,
@@ -88,12 +88,12 @@ class METNorwaySyncAdapter:
             Lista de dados diários
 
         Example:
-            >>> adapter = METNorwaySyncAdapter()
-            >>> data = adapter.get_daily_data_sync(
-            ...     lat=60.0, lon=10.0,
-            ...     start_date=datetime(2024, 1, 1),
-            ...     end_date=datetime(2024, 1, 7)
-            ... )
+            > adapter = METNorwaySyncAdapter()
+            > data = adapter.get_daily_data_sync(
+                lat=60.0, lon=10.0,
+                start_date=datetime(2024, 1, 1),
+                end_date=datetime(2024, 1, 7)
+            )
         """
         return asyncio.run(
             self._async_get_daily_data(

@@ -1,16 +1,16 @@
 """
-COMPARAÇÃO COMPLETA DE FONTES ETo
+COMPLETE ETo SOURCES COMPARISON
 
-Compara 4 fontes de ETo contra Xavier BR-DWGD (referência):
-1. NASA POWER raw only (sem fusão)
-2. OpenMeteo raw only (sem fusão)
+Compares 4 ETo sources against Xavier BR-DWGD (reference):
+1. NASA POWER raw only (without fusion)
+2. OpenMeteo raw only (without fusion)
 3. OpenMeteo ETo raw
-4. EVAonline Full Pipeline (NASA + OpenMeteo com Kalman)
+4. EVAonline Full Pipeline (NASA + OpenMeteo with Kalman)
 
-Saídas:
-- Métricas completas em CSV único
-- Gráficos comparativos para cada cidade
-- Resumo estatístico consolidado
+Outputs:
+- Complete metrics in single CSV
+- Comparative plots for each city
+- Consolidated statistical summary
 """
 
 import sys
@@ -44,43 +44,41 @@ logger.add(
     format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>",
 )
 
-# Diretórios
+# Directories
 DATA_DIR = PROJECT_ROOT / "data"
 ORIGINAL_DATA = DATA_DIR / "original_data"
-VALIDATION_DIR = (
-    DATA_DIR / "validation_results_all_pipeline" / "xavier_validation"
-)
+VALIDATION_DIR = DATA_DIR / "6_validation_full_pipeline" / "xavier_validation"
 
-# Fontes de ETo
+# ETo sources
 SOURCES = {
-    "NASA_ONLY": DATA_DIR / "eto_nasa_only",
-    "OPENMETEO_ONLY": DATA_DIR / "eto_openmeteo_only",
+    "NASA_ONLY": DATA_DIR / "4_eto_nasa_only",
+    "OPENMETEO_ONLY": DATA_DIR / "4_eto_openmeteo_only",
     "OPENMETEO_API": ORIGINAL_DATA / "eto_open_meteo",
-    "EVAONLINE_FUSION": VALIDATION_DIR / "full_pipeline" / "cache",
+    "EVAONLINE_FUSION": VALIDATION_DIR / "cache",
 }
 
 # Referência Xavier
 XAVIER_DIR = ORIGINAL_DATA / "eto_xavier_csv"
 
-# Output
-OUTPUT_DIR = VALIDATION_DIR / "comparison_all_sources"
+# Output (inside data directory, same level as other numbered folders)
+OUTPUT_DIR = DATA_DIR / "7_comparison_all_sources"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_eto_data(city_name: str, source_key: str) -> Optional[pd.DataFrame]:
     """
-    Carrega dados de ETo de uma fonte específica.
+    Load ETo data from a specific source.
 
     Args:
-        city_name: Nome da cidade (ex: Alvorada_do_Gurgueia_PI)
-        source_key: Chave da fonte (NASA_ONLY, OPENMETEO_ONLY, etc)
+        city_name: City name (e.g., Alvorada_do_Gurgueia_PI)
+        source_key: Source key (NASA_ONLY, OPENMETEO_ONLY, etc)
 
     Returns:
-        DataFrame com colunas [date, eto]
+        DataFrame with columns [date, eto]
     """
     source_dir = SOURCES[source_key]
 
-    # Padrões de nomenclatura por fonte
+    # Naming patterns by source
     patterns = {
         "NASA_ONLY": f"{city_name}_ETo_NASA_ONLY.csv",
         "OPENMETEO_ONLY": f"{city_name}_ETo_OpenMeteo_ONLY.csv",
@@ -91,15 +89,13 @@ def load_eto_data(city_name: str, source_key: str) -> Optional[pd.DataFrame]:
     file_path = source_dir / patterns[source_key]
 
     if not file_path.exists():
-        logger.warning(
-            f"{source_key}: Arquivo não encontrado - {file_path.name}"
-        )
+        logger.warning(f"{source_key}: File not found - {file_path.name}")
         return None
 
     try:
         df = pd.read_csv(file_path, parse_dates=["date"])
 
-        # Renomear coluna de ETo para padronização
+        # Rename ETo column for standardization
         eto_col_map = {
             "NASA_ONLY": "eto_evaonline",
             "OPENMETEO_ONLY": "eto_evaonline",
@@ -110,50 +106,50 @@ def load_eto_data(city_name: str, source_key: str) -> Optional[pd.DataFrame]:
         eto_col = eto_col_map[source_key]
 
         if eto_col not in df.columns:
-            logger.error(f"{source_key}: Coluna '{eto_col}' não encontrada")
+            logger.error(f"{source_key}: Column '{eto_col}' not found")
             return None
 
         df = df[["date", eto_col]].rename(columns={eto_col: "eto"})
-        logger.info(f"{source_key}: {len(df)} dias")
+        logger.info(f"{source_key}: {len(df)} days")
 
         return df
 
     except Exception as e:
-        logger.error(f"{source_key}: Erro ao ler arquivo - {e}")
+        logger.error(f"{source_key}: Error reading file - {e}")
         return None
 
 
 def load_xavier_reference(city_name: str) -> Optional[pd.DataFrame]:
-    """Carrega dados de referência Xavier."""
+    """Load Xavier reference data."""
     file_path = XAVIER_DIR / f"{city_name}.csv"
 
     if not file_path.exists():
-        logger.error(f"Xavier não encontrado: {file_path.name}")
+        logger.error(f"Xavier not found: {file_path.name}")
         return None
 
     try:
         df = pd.read_csv(file_path, parse_dates=["date"])
         df = df[["date", "eto_xavier"]].rename(columns={"eto_xavier": "eto"})
-        logger.info(f"Xavier: {len(df)} dias")
+        logger.info(f"Xavier: {len(df)} days")
         return df
     except Exception as e:
-        logger.error(f"Erro ao ler Xavier: {e}")
+        logger.error(f"Error reading Xavier: {e}")
         return None
 
 
 def calculate_metrics(ref: np.ndarray, calc: np.ndarray) -> Dict[str, float]:
     """
-    Calcula métricas completas de validação.
+    Calculate complete validation metrics.
 
     Returns:
-        Dicionário com R², KGE, NSE, MAE, RMSE, PBIAS, etc.
+        Dictionary with R², KGE, NSE, MAE, RMSE, PBIAS, etc.
     """
 
-    # Forçar float e remover NaN (segurança)
+    # Force float and remove NaN (safety)
     ref = np.asarray(ref, dtype=float)
     calc = np.asarray(calc, dtype=float)
     mask = ~(np.isnan(ref) | np.isnan(calc))
-    if mask.sum() < 10:  # proteção contra poucos dados
+    if mask.sum() < 10:  # protection against insufficient data
         return {
             k: np.nan
             for k in "r2 kge nse mae rmse bias pbias slope intercept p_value significance".split()
@@ -162,7 +158,7 @@ def calculate_metrics(ref: np.ndarray, calc: np.ndarray) -> Dict[str, float]:
     ref, calc = ref[mask], calc[mask]
     n = len(ref)
 
-    # Métricas básicas
+    # Basic metrics
     mae = float(mean_absolute_error(ref, calc))
     rmse = float(np.sqrt(mean_squared_error(ref, calc)))
     bias = float(np.mean(calc - ref))
@@ -172,7 +168,7 @@ def calculate_metrics(ref: np.ndarray, calc: np.ndarray) -> Dict[str, float]:
         else np.nan
     )
 
-    # Regressão linear
+    # Linear regression
     slope, intercept, r_val, p_val, _ = linregress(ref, calc)
     r2 = float(r_val**2)
 
@@ -187,7 +183,7 @@ def calculate_metrics(ref: np.ndarray, calc: np.ndarray) -> Dict[str, float]:
     beta = np.mean(calc) / np.mean(ref) if np.mean(ref) > 0 else np.nan
     kge = float(1 - np.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2))
 
-    # Significância do R (correlação)
+    # R significance (correlation)
     sig = (
         "***"
         if p_val < 0.001
@@ -212,14 +208,14 @@ def calculate_metrics(ref: np.ndarray, calc: np.ndarray) -> Dict[str, float]:
 
 def compare_city(city_name: str) -> List[Dict]:
     """
-    Compara todas as fontes de ETo para uma cidade.
+    Compare all ETo sources for a city.
 
     Returns:
-        Lista de dicionários com métricas por fonte
+        List of dictionaries with metrics by source
     """
     logger.info(f"\n{city_name}")
 
-    # Carregar Xavier (referência)
+    # Load Xavier (reference)
     df_xavier = load_xavier_reference(city_name)
     if df_xavier is None:
         return []
@@ -227,25 +223,25 @@ def compare_city(city_name: str) -> List[Dict]:
     results = []
     dfs_for_plot = {"Xavier": df_xavier}
 
-    # Carregar e comparar cada fonte
+    # Load and compare each source
     for source_key in SOURCES.keys():
         df_source = load_eto_data(city_name, source_key)
 
         if df_source is None:
             continue
 
-        # Merge com Xavier
+        # Merge with Xavier
         df_compare = pd.merge(
             df_xavier, df_source, on="date", suffixes=("_xavier", "_source")
         ).dropna()
 
         if len(df_compare) < 100:
             logger.warning(
-                f"{source_key}: Dados insuficientes ({len(df_compare)} dias)"
+                f"{source_key}: Insufficient data ({len(df_compare)} days)"
             )
             continue
 
-        # Calcular métricas
+        # Calculate metrics
         ref = df_compare["eto_xavier"].values
         calc = df_compare["eto_source"].values
 
@@ -256,7 +252,7 @@ def compare_city(city_name: str) -> List[Dict]:
 
         results.append(metrics)
 
-        # Guardar para plot
+        # Save for plotting
         dfs_for_plot[source_key] = df_compare[["date", "eto_source"]].rename(
             columns={"eto_source": "eto"}
         )
@@ -266,7 +262,7 @@ def compare_city(city_name: str) -> List[Dict]:
             f"KGE={metrics['kge']:.3f} | MAE={metrics['mae']:.3f}"
         )
 
-    # Gerar gráfico comparativo
+    # Generate comparative plot
     if len(results) > 0:
         plot_comparison(city_name, dfs_for_plot, results)
 
@@ -279,24 +275,24 @@ def plot_comparison(
     metrics: List[Dict],
 ):
     """
-    Gera gráfico comparativo com 4 fontes vs Xavier.
+    Generate comparative plot with 4 sources vs Xavier.
 
     Layout: 2x2 grid
-    - (A) Séries temporais completas
+    - (A) Complete time series
     - (B) Scatter plots NASA vs OpenMeteo
-    - (C) Barras de métricas (R², KGE, MAE)
-    - (D) Box plots de resíduos
+    - (C) Metrics bars (R², KGE, MAE)
+    - (D) Residuals box plots
     """
     fig = plt.figure(figsize=(18, 14))
     gs = fig.add_gridspec(3, 2, hspace=0.3, wspace=0.3)
 
     fig.suptitle(
-        f'{city_name.replace("_", " ")} - Comparação de Fontes ETo (1991-2020)',
+        f'{city_name.replace("_", " ")} - ETo Sources Comparison (1991-2020)',
         fontsize=16,
         fontweight="bold",
     )
 
-    # Cores por fonte
+    # Colors by source
     colors = {
         "Xavier": "#000000",
         "NASA_ONLY": "#E63946",
@@ -313,7 +309,7 @@ def plot_comparison(
         "EVAONLINE_FUSION": "EVAonline Fusion",
     }
 
-    # (A) Séries temporais - 2 colunas inteiras
+    # (A) Time series - 2 full columns
     ax1 = fig.add_subplot(gs[0, :])
 
     df_xavier = dfs["Xavier"]
@@ -375,7 +371,7 @@ def plot_comparison(
             )
             continue
 
-        # Merge para scatter
+        # Merge for scatter
         df_merge = pd.merge(
             df_xavier, dfs[source], on="date", suffixes=("_xavier", "_source")
         ).dropna()
@@ -383,15 +379,15 @@ def plot_comparison(
         ref = df_merge["eto_xavier"].values
         calc = df_merge["eto_source"].values
 
-        # Scatter
+        # Scatter plot plot
         ax.scatter(ref, calc, alpha=0.3, s=10, color=colors[source])
 
-        # Linha 1:1
+        # 1:1 line
         min_val = min(ref.min(), calc.min())
         max_val = max(ref.max(), calc.max())
         ax.plot([min_val, max_val], [min_val, max_val], "k--", lw=2, alpha=0.5)
 
-        # Regressão
+        # Regression line
         m = [m for m in metrics if m["source"] == source][0]
         x_line = np.array([min_val, max_val])
         y_line = m["slope"] * x_line + m["intercept"]
@@ -407,7 +403,7 @@ def plot_comparison(
         ax.grid(True, alpha=0.3)
         ax.set_aspect("equal", adjustable="box")
 
-        # Métricas no canto
+        # Metrics in corner
         textstr = "\n".join(
             [
                 f"R² = {m['r2']:.3f} {m['significance']}",
@@ -427,7 +423,7 @@ def plot_comparison(
             bbox=props,
         )
 
-    # Salvar
+    # Save plots
     plot_dir = OUTPUT_DIR / "plots"
     plot_dir.mkdir(exist_ok=True)
 
@@ -436,16 +432,16 @@ def plot_comparison(
     plt.savefig(f"{plot_path}.pdf", dpi=300, bbox_inches="tight")
     plt.close()
 
-    logger.info(f"  📊 Gráfico salvo: {plot_path.name}")
+    logger.info(f"  📊 Plot saved: {plot_path.name}")
 
 
 def generate_summary_table(results: List[Dict]) -> pd.DataFrame:
     """
-    Gera tabela resumo com médias por fonte (formato limpo).
+    Generate summary table with averages, std, min, max by source.
     """
     df = pd.DataFrame(results)
 
-    # Criar resumo manualmente para evitar multi-index
+    # Create summary manually to avoid multi-index
     summary_data = []
     for source in df["source"].unique():
         src_df = df[df["source"] == source]
@@ -454,18 +450,49 @@ def generate_summary_table(results: List[Dict]) -> pd.DataFrame:
                 "source": source,
                 "n_cities": len(src_df),
                 "n_days": int(src_df["n_days"].mean()),
+                # R²
                 "r2_mean": round(src_df["r2"].mean(), 4),
                 "r2_std": round(src_df["r2"].std(), 4),
+                "r2_min": round(src_df["r2"].min(), 4),
+                "r2_max": round(src_df["r2"].max(), 4),
+                # KGE
                 "kge_mean": round(src_df["kge"].mean(), 4),
                 "kge_std": round(src_df["kge"].std(), 4),
+                "kge_min": round(src_df["kge"].min(), 4),
+                "kge_max": round(src_df["kge"].max(), 4),
+                # NSE
                 "nse_mean": round(src_df["nse"].mean(), 4),
                 "nse_std": round(src_df["nse"].std(), 4),
+                "nse_min": round(src_df["nse"].min(), 4),
+                "nse_max": round(src_df["nse"].max(), 4),
+                # MAE
                 "mae_mean": round(src_df["mae"].mean(), 4),
                 "mae_std": round(src_df["mae"].std(), 4),
+                "mae_min": round(src_df["mae"].min(), 4),
+                "mae_max": round(src_df["mae"].max(), 4),
+                # RMSE
                 "rmse_mean": round(src_df["rmse"].mean(), 4),
                 "rmse_std": round(src_df["rmse"].std(), 4),
+                "rmse_min": round(src_df["rmse"].min(), 4),
+                "rmse_max": round(src_df["rmse"].max(), 4),
+                # PBIAS
                 "pbias_mean": round(src_df["pbias"].mean(), 2),
                 "pbias_std": round(src_df["pbias"].std(), 2),
+                "pbias_min": round(src_df["pbias"].min(), 2),
+                "pbias_max": round(src_df["pbias"].max(), 2),
+                # Slope
+                "slope_mean": round(src_df["slope"].mean(), 4),
+                "slope_std": round(src_df["slope"].std(), 4),
+                "slope_min": round(src_df["slope"].min(), 4),
+                "slope_max": round(src_df["slope"].max(), 4),
+                # Intercept
+                "intercept_mean": round(src_df["intercept"].mean(), 4),
+                "intercept_std": round(src_df["intercept"].std(), 4),
+                "intercept_min": round(src_df["intercept"].min(), 4),
+                "intercept_max": round(src_df["intercept"].max(), 4),
+                # P-value (mean across cities)
+                "p_value_mean": round(src_df["p_value"].mean(), 6),
+                "p_value_max": round(src_df["p_value"].max(), 6),
             }
         )
 
@@ -473,12 +500,12 @@ def generate_summary_table(results: List[Dict]) -> pd.DataFrame:
 
 
 def main():
-    """Pipeline principal de comparação."""
+    """Main comparison pipeline."""
     logger.info("=" * 90)
-    logger.info("COMPARAÇÃO COMPLETA - 4 FONTES ETo vs Xavier BR-DWGD")
+    logger.info("COMPLETE COMPARISON - 4 ETo SOURCES vs Xavier BR-DWGD")
     logger.info("=" * 90)
 
-    # Lista de cidades (mesmas do MATOPIBA)
+    # City list (same as MATOPIBA)
     cities = [
         "Alvorada_do_Gurgueia_PI",
         "Araguaina_TO",
@@ -506,22 +533,22 @@ def main():
         city_results = compare_city(city)
         all_results.extend(city_results)
 
-    # Salvar resultados completos
+    # Save complete results
     if all_results:
         df_results = pd.DataFrame(all_results)
         results_path = OUTPUT_DIR / "COMPARISON_ALL_SOURCES.csv"
         df_results.to_csv(results_path, index=False)
-        logger.success(f"\n✅ Resultados salvos: {results_path}")
+        logger.success(f"\n✅ Results saved: {results_path}")
 
-        # Gerar resumo estatístico
+        # Generate statistical summary
         summary = generate_summary_table(all_results)
         summary_path = OUTPUT_DIR / "SUMMARY_BY_SOURCE.csv"
         summary.to_csv(summary_path, index=False)
-        logger.success(f"->> Resumo salvo: {summary_path}")
+        logger.success(f"->> Summary saved: {summary_path}")
 
-        # Exibir resumo
+        # Display summary
         logger.info("\n" + "=" * 90)
-        logger.info("->> RESUMO POR FONTE (média ± std):")
+        logger.info("->> SUMMARY BY SOURCE (mean ± std):")
         logger.info("=" * 90)
 
         for source in [
@@ -533,25 +560,29 @@ def main():
             src_data = df_results[df_results["source"] == source]
             if len(src_data) > 0:
                 logger.info(f"\n{source}:")
-                logger.info(
-                    f"R²: {src_data['r2'].mean():.3f} ± {src_data['r2'].std():.3f}"
-                )
-                logger.info(
-                    f"KGE: {src_data['kge'].mean():.3f} ± {src_data['kge'].std():.3f}"
-                )
-                logger.info(
-                    f"NSE: {src_data['nse'].mean():.3f} ± {src_data['nse'].std():.3f}"
-                )
-                logger.info(
-                    f"MAE: {src_data['mae'].mean():.3f} ± {src_data['mae'].std():.3f}"
-                )
-                logger.info(
-                    f"PBIAS: {src_data['pbias'].mean():.2f}% ± {src_data['pbias'].std():.2f}%"
-                )
+                r2_m = src_data["r2"].mean()
+                r2_s = src_data["r2"].std()
+                logger.info(f"R²: {r2_m:.3f} ± {r2_s:.3f}")
 
-        logger.success("\n--->>PROCESSO CONCLUÍDO COM SUCESSO!<<---")
+                kge_m = src_data["kge"].mean()
+                kge_s = src_data["kge"].std()
+                logger.info(f"KGE: {kge_m:.3f} ± {kge_s:.3f}")
+
+                nse_m = src_data["nse"].mean()
+                nse_s = src_data["nse"].std()
+                logger.info(f"NSE: {nse_m:.3f} ± {nse_s:.3f}")
+
+                mae_m = src_data["mae"].mean()
+                mae_s = src_data["mae"].std()
+                logger.info(f"MAE: {mae_m:.3f} ± {mae_s:.3f}")
+
+                pb_m = src_data["pbias"].mean()
+                pb_s = src_data["pbias"].std()
+                logger.info(f"PBIAS: {pb_m:.2f}% ± {pb_s:.2f}%")
+
+        logger.success("\n--->> PROCESS COMPLETED SUCCESSFULLY! <<---")
     else:
-        logger.error("Nenhum resultado gerado!")
+        logger.error("No results generated!")
 
 
 if __name__ == "__main__":

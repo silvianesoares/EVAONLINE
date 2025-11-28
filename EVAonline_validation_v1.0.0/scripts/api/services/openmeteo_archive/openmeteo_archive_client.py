@@ -7,7 +7,7 @@ Cobertura: Global
 
 Período: 1990-01-01 até (hoje - 2 dias)
 
-Resolução: Diária (agregada de dados horários)
+Resolução: Diária
 
 Licença: CC BY 4.0 (atribuição obrigatória)
 
@@ -39,8 +39,8 @@ import requests_cache
 from loguru import logger
 from retry_requests import retry
 
-from validation_logic_eto.api.services.geographic_utils import GeographicUtils
-from validation_logic_eto.api.services.weather_utils import (
+from scripts.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.weather_utils import (
     WeatherConversionUtils,
 )
 
@@ -569,7 +569,7 @@ class OpenMeteoArchiveClient:
             "url": "https://archive-api.open-meteo.com/v1/archive",
             "coverage": "Global",
             "period": f"Padrão EVAonline: 1990-01-01 até {max_date.date()}",
-            "resolution": "Diária (agregada de horária)",
+            "resolution": "Diária",
             "license": "CC BY 4.0",
             "attribution": "Weather data by Open-Meteo.com (CC BY 4.0)",
             "cache_ttl": "24 horas (dados históricos estáveis)",

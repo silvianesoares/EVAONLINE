@@ -36,12 +36,14 @@ CACHE STRATEGY (Nov 2025):
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
+import numpy as np
+import pandas as pd
 import openmeteo_requests
 import requests_cache
 from loguru import logger
 from retry_requests import retry
 
-from validation_logic_eto.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.geographic_utils import GeographicUtils
 
 
 class OpenMeteoForecastConfig:
@@ -189,40 +191,46 @@ class OpenMeteoForecastClient:
         today_date = datetime.now().date()
 
         # Calcular past_days e forecast_days
+        # Forecast API usa hoje como ponto de referência
         if start_dt.date() <= today_date:
             past_days = (today_date - start_dt.date()).days
         else:
             past_days = 0
 
-        if end_dt.date() >= today_date:
-            forecast_days = (end_dt.date() - today_date).days + 1
+        if end_dt.date() > today_date:
+            # forecast_days conta a partir de amanhã, não hoje
+            forecast_days = (end_dt.date() - today_date).days
         else:
             forecast_days = 0
 
-        # Limites da API (corrigidos conforme documentação)
-        past_days = min(past_days, 25)
-        forecast_days = min(forecast_days, 5)
+        # Limites da API (conforme configurado no projeto)
+        past_days = min(past_days, 25)  # Project limit: 25 past days
+        forecast_days = min(forecast_days, 16)  # API supports up to 16
 
+        # API Forecast sempre inclui hoje (day 0) automaticamente
+        # past_days=15 + hoje + forecast_days=5 = 21 dias
         params = {
             "latitude": lat,
             "longitude": lng,
-            "past_days": past_days,
-            "forecast_days": forecast_days,
             "daily": self.config.DAILY_VARIABLES,
             "models": "best_match",
             "timezone": "auto",
             "wind_speed_unit": "ms",
         }
 
+        # Adicionar past_days e forecast_days apenas se > 0
+        if past_days > 0:
+            params["past_days"] = past_days
+        if forecast_days > 0:
+            params["forecast_days"] = forecast_days
+
+        logger.info(f"Cache MISS: Forecast API | ({lat:.4f}, {lng:.4f})")
+        logger.info(f"Requested period: {start_date} to {end_date}")
         logger.info(
-            f"⚠️ Cache MISS: Forecast API past_days={past_days}, "
-            f"forecast_days={forecast_days} | ({lat:.4f}, {lng:.4f})"
+            f"Calculated: past_days={past_days}, "
+            f"forecast_days={forecast_days}"
         )
-        logger.info(
-            f"Requested: {start_date} to {end_date} → "
-            f"API params: past_days={past_days}, forecast_days={forecast_days}"
-        )
-        logger.info(f"Full API params: {params}")
+        logger.info(f"API params: {params}")
 
         # 4. Fetch data from Forecast API
         try:
@@ -243,22 +251,27 @@ class OpenMeteoForecastClient:
 
             # 6. Extract climate data
             daily = response.Daily()
-            # Handle scalar (single day) vs array timestamps
-            time_data = daily.Time()  # type: ignore
 
-            logger.debug(f"Raw time_data type: {type(time_data)}")
-            logger.debug(f"Raw time_data value: {time_data}")
-            logger.debug(f"Has tolist: {hasattr(time_data, 'tolist')}")
+            # Use Time(), TimeEnd() and Interval() para criar date range
+            # conforme documentação Open-Meteo
+            start_time = daily.Time()  # type: ignore
+            end_time = daily.TimeEnd()  # type: ignore
+            interval = daily.Interval()  # type: ignore
 
-            if hasattr(time_data, "tolist"):
-                timestamps = time_data.tolist()  # type: ignore
-            else:
-                timestamps = [int(time_data)]
+            logger.info(
+                f"Time range: {start_time} to {end_time}, "
+                f"interval: {interval}s"
+            )
 
-            logger.debug(f"Timestamps extracted: {len(timestamps)} items")
-            logger.debug(f"First 3 timestamps: {timestamps[:3]}")
+            # Criar date range usando pandas (método oficial Open-Meteo)
+            dates_range = pd.date_range(
+                start=pd.to_datetime(start_time, unit="s", utc=True),
+                end=pd.to_datetime(end_time, unit="s", utc=True),
+                freq=pd.Timedelta(seconds=interval),
+                inclusive="left",
+            )
 
-            dates = [datetime.fromtimestamp(ts) for ts in timestamps]
+            dates = dates_range.tolist()
 
             logger.info(
                 f"✅ API returned {len(dates)} days: "
@@ -284,14 +297,15 @@ class OpenMeteoForecastClient:
 
             # Convert wind from 10m to 2m for FAO-56 PM equation
             if "wind_speed_10m_mean" in climate_data:
-                wind_10m = climate_data["wind_speed_10m_mean"]  # type: ignore
-                wind_2m = [
-                    self.convert_wind_10m_to_2m(w) if w is not None else None  # type: ignore  # noqa: E501
-                    for w in wind_10m  # type: ignore
-                ]
-                climate_data["wind_speed_2m_mean"] = wind_2m  # type: ignore
+                wind_10m = climate_data["wind_speed_10m_mean"]  # type: ignore  # noqa: E501
+                wind_10m_array = np.array(wind_10m, dtype=float)
+                wind_2m_array = self.convert_wind_10m_to_2m(wind_10m_array)  # type: ignore  # noqa: E501
+                climate_data["wind_speed_2m_mean"] = (
+                    wind_2m_array.tolist()  # type: ignore
+                )
                 logger.debug(
-                    f"✅ Converted wind 10m→2m: {len(wind_2m)} values"
+                    f"✅ Converted wind 10m→2m: "
+                    f"{len(wind_2m_array)} values"  # type: ignore
                 )
 
             # 7. Add metadata
@@ -327,26 +341,27 @@ class OpenMeteoForecastClient:
             raise
 
     @staticmethod
-    def convert_wind_10m_to_2m(wind_10m: float | None) -> float | None:
+    def convert_wind_10m_to_2m(
+        u_height: np.ndarray, height: float = 10.0
+    ) -> np.ndarray:
         """
-        Converte velocidade do vento de 10m para 2m usando perfil logarítmico.
-
-        Fórmula FAO-56 (Allen et al., 1998):
-        u2 = uz × (4.87) / ln(67.8 × z - 5.42)
-
-        Para z=10m: u2 ≈ u10 × 0.748
-
-        Referência: FAO Irrigation and Drainage Paper 56, Chapter 3, Eq 47
+        Eq. 47 - Logarithmic wind speed conversion to 2m height
 
         Args:
-            wind_10m: Velocidade do vento a 10m (m/s)
+            u_height: Wind speed at measurement height (m/s)
+            height: Measurement height (m) - default 10m for Open-Meteo
+                    NASA POWER data is already at 2m, so height=2.0
 
         Returns:
-            Velocidade do vento a 2m (m/s) ou None
+            Wind speed at 2m height (m/s)
         """
-        if wind_10m is None:
-            return None
-        return wind_10m * 0.748
+        if height == 2.0:
+            # NASA POWER is already at 2m
+            return np.maximum(u_height, 0.5)
+
+        # FAO-56 Eq. 47 logarithmic conversion
+        u2 = u_height * (4.87 / np.log(67.8 * height - 5.42))
+        return np.maximum(u2, 0.5)  # Physical minimum limit
 
     def _get_cache_key(
         self, lat: float, lng: float, start_date: str, end_date: str
@@ -439,18 +454,18 @@ class OpenMeteoForecastClient:
             Dict with API metadata
         """
         today = datetime.now().date()
-        min_date = today - timedelta(days=90)
-        max_date = today + timedelta(days=5)
+        min_date = today - timedelta(days=92)  # API supports 92 past days
+        max_date = today + timedelta(days=16)  # API supports 16 future days
 
         return {
             "api": "Open-Meteo Forecast",
             "url": "https://api.open-meteo.com/v1/forecast",
             "coverage": "Global",
-            "period": f"{min_date} até {max_date}",
-            "resolution": "Diária (agregada de horária)",
+            "period": f"{min_date} to {max_date}",
+            "resolution": "Daily",
             "license": "CC BY 4.0",
             "attribution": "Weather data by Open-Meteo.com (CC BY 4.0)",
-            "cache_ttl": "6 horas (dados atualizam diariamente)",
+            "cache_ttl": "6 hours",
         }
 
 

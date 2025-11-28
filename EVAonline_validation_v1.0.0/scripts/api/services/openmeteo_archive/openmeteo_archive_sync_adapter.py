@@ -24,7 +24,7 @@ CACHE STRATEGY (Nov 2025):
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Union
 
 import pandas as pd
@@ -87,14 +87,6 @@ class OpenMeteoArchiveSyncAdapter:
 
         Returns:
             Lista de dicionários com dados diários
-
-        Example:
-            >>> adapter = OpenMeteoArchiveSyncAdapter()
-            >>> data = adapter.get_daily_data_sync(
-            ...     lat=-15.7939, lon=-47.8828,
-            ...     start_date='2024-01-01',
-            ...     end_date='2024-01-07'
-            ... )
         """
         # Convert strings to datetime if needed
         if isinstance(start_date, str):
@@ -196,7 +188,7 @@ class OpenMeteoArchiveSyncAdapter:
         """
         Implementação async do health check.
 
-        Testa: Brasília, 1 ano atrás, best_match model.
+        Testa: Brasília, 1990-01-01, best_match model.
         """
         try:
             client = OpenMeteoArchiveClient(
@@ -204,8 +196,8 @@ class OpenMeteoArchiveSyncAdapter:
             )
 
             # Testar com coordenadas de referência (Brasília)
-            # Usar data histórica segura (1 ano atrás)
-            test_date = (datetime.now() - timedelta(days=365)).date()
+            # Usar data histórica segura (início do período de validação)
+            test_date = datetime(1990, 1, 1).date()
             response = await client.get_climate_data(
                 lat=-15.7939,
                 lng=-47.8828,

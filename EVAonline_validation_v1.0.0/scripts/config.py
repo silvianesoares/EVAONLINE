@@ -13,7 +13,7 @@ from typing import Dict, List, Any
 # Root directories
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / "data" / "original_data"
-VALIDATION_DIR = PROJECT_ROOT / "data" / "validation_results_all_pipeline"
+VALIDATION_DIR = PROJECT_ROOT / "data" / "6_validation_full_pipeline"
 
 # Input data paths
 XAVIER_ETO_DIR = DATA_DIR / "eto_xavier_csv"  # Reference ETo (Xavier BR-DWGD)

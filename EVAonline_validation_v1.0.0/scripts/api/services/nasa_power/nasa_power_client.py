@@ -60,7 +60,7 @@ import httpx
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from validation_logic_eto.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.geographic_utils import GeographicUtils
 
 
 class NASAPowerConfig(BaseModel):

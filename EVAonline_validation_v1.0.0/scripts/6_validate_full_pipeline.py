@@ -1,17 +1,23 @@
 """
-PIPELINE COMPLETO EVAonline
+FULL EVAONLINE PIPELINE WITH KALMAN FUSION
 
-Métricas (17 cidades MATOPIBA, 1991-2020):
-- Tempo de execução: < 3 minutos (vs 3+ horas versão anterior)
+This script implements the COMPLETE EVAonline pipeline including:
+- Multi-source data fusion (NASA POWER + Open-Meteo) using Kalman ensemble
+- Final Kalman correction on calculated ETo for bias reduction
+- Comprehensive validation against Xavier et al. (2022) BR-DWGD
 
-Fluxo:
-1. Carregar dados RAW locais (glob pattern)
-2. Buscar altitude via TopoData
-3. Pré-processamento FAO-56
-4. Conversão vento vetorizada (10m → 2m)
-5. Fusão Kalman VETORIZADA (mais rápida)
-6. Cálculo ETo + Kalman final
-7. Validação vs Xavier com plots
+Difference from script 5:
+  Script 5: Single-source validation (Open-Meteo only, NO Kalman fusion)
+  Script 6: Full pipeline with Kalman fusion of multiple data sources
+
+Workflow:
+1. Load local RAW data (NASA POWER + Open-Meteo)
+2. Fetch elevation via TopoData
+3. FAO-56 preprocessing
+4. Vectorized wind conversion (10m → 2m, FAO-56 Eq. 47)
+5. VECTORIZED Kalman fusion (NASA + Open-Meteo)
+6. Calculate ETo + final Kalman bias correction
+7. Validation vs Xavier BR-DWGD with publication-ready plots
 """
 
 import sys
@@ -24,26 +30,23 @@ import numpy as np
 from loguru import logger
 from scipy.stats import linregress, norm as scipy_norm
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-import matplotlib
-import matplotlib.pyplot as plt
 
-# Adicionar o diretório raiz ao Python path
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
+# Add root directory to Python path
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Imports EVAonline
-# from scripts.config import (
-#     BRASIL_CITIES,
-#     XAVIER_RESULTS_DIR,
-#     get_xavier_eto_path,
-# )
+# EVAonline imports (after sys.path modification)
 from scripts.config import (
     XAVIER_RESULTS_DIR,
     BRASIL_CITIES,
     get_xavier_eto_path,
 )
-
 from api.services.opentopo.opentopo_sync_adapter import (
     OpenTopoSyncAdapter,
 )
@@ -57,10 +60,7 @@ from core.eto_calculation.eto_services import (
     calculate_eto_timeseries,
 )
 
-
-matplotlib.use("Agg")
-
-# Logger otimizado
+# Optimized logger configuration
 logger.remove()
 logger.add(
     sys.stdout,
@@ -69,54 +69,54 @@ logger.add(
     format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>",
 )
 
-# Diretórios
+# Directories
 DATA_DIR = Path(__file__).parent.parent / "data" / "original_data"
 NASA_RAW_DIR = DATA_DIR / "nasa_power_raw"
 OPENMETEO_RAW_DIR = DATA_DIR / "open_meteo_raw"
 
-OUTPUT_DIR = XAVIER_RESULTS_DIR / "full_pipeline"
+OUTPUT_DIR = XAVIER_RESULTS_DIR
 CACHE_DIR = OUTPUT_DIR / "cache"
 PREPROCESSED_DIR = OUTPUT_DIR / "preprocessed"
 
-# Criar apenas diretório base (outros criados quando necessário)
+# Create only base directory (others created when needed)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_raw_data(city_name: str, source: str) -> pd.DataFrame:
     """
-    Carrega dados RAW locais com fallback inteligente usando glob pattern.
+    Load local RAW data with intelligent fallback using glob pattern.
 
     Args:
-        city_name: Nome da cidade
-        source: 'nasa' ou 'openmeteo'
+        city_name: City name
+        source: 'nasa' or 'openmeteo'
 
     Returns:
-        DataFrame com dados RAW
+        DataFrame with RAW data
     """
     pattern = f"{city_name}_*.csv"
     directory = NASA_RAW_DIR if source == "nasa" else OPENMETEO_RAW_DIR
 
     files = list(directory.glob(pattern))
     if not files:
-        logger.error(f"X{source.upper()} não encontrado: {city_name}")
+        logger.error(f"{source.upper()} not found: {city_name}")
         return pd.DataFrame()
 
     df = pd.read_csv(files[0])
     df["date"] = pd.to_datetime(df["date"])
-    logger.info(f"{source.upper()}: {len(df)} dias → {files[0].name}")
+    logger.info(f"{source.upper()}: {len(df)} days → {files[0].name}")
     return df
 
 
 async def get_elevation(lat: float, lon: float) -> float:
     """
-    Busca elevação via TopoData com fallback rápido.
+    Fetch elevation via TopoData with fast fallback.
 
     Args:
         lat: Latitude
         lon: Longitude
 
     Returns:
-        Elevação em metros (default 500m se falhar)
+        Elevation in meters (default 500m if fails)
     """
     try:
         topo = OpenTopoSyncAdapter()
@@ -125,10 +125,10 @@ async def get_elevation(lat: float, lon: float) -> float:
         )
         if elevation_obj and hasattr(elevation_obj, "elevation"):
             elev = float(elevation_obj.elevation)
-            logger.info(f"Elevação TopoData: {elev:.1f}m")
+            logger.info(f"TopoData elevation: {elev:.1f}m")
             return elev
     except Exception as e:
-        logger.warning(f"TopoData falhou → usando 500m (erro: {str(e)[:50]})")
+        logger.warning(f"TopoData failed → using 500m (error: {str(e)[:50]})")
     return 500.0
 
 
@@ -140,51 +140,51 @@ async def process_city(
     end_date: str = "2020-12-31",
 ) -> Optional[pd.DataFrame]:
     """
-    Processa uma cidade: RAW → Preprocessing → Kalman → ETo (versão otimizada).
+    Process one city: RAW → Preprocessing → Kalman → ETo (optimized).
 
     Args:
-        city_name: Nome da cidade
+        city_name: City name
         lat: Latitude
         lon: Longitude
-        start_date: Data inicial
-        end_date: Data final
+        start_date: Start date
+        end_date: End date
 
     Returns:
-        DataFrame com ETo calculado
+        DataFrame with calculated ETo
     """
     cache_file = CACHE_DIR / f"{city_name}_eto_final.csv"
 
     if cache_file.exists():
-        logger.info(f"Cache usado: {city_name}")
+        logger.info(f"Using cache: {city_name}")
         return pd.read_csv(cache_file, parse_dates=["date"])
 
-    # Criar diretório de cache apenas quando for salvar
+    # Create cache directory only when saving
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"Processando {city_name} | lat={lat:.4f}, lon={lon:.4f}")
+    logger.info(f"Processing {city_name} | lat={lat:.4f}, lon={lon:.4f}")
 
-    # === 1. CARREGAR DADOS RAW ===
+    # === 1. LOAD RAW DATA ===
     nasa_raw = load_raw_data(city_name, "nasa")
     om_raw = load_raw_data(city_name, "openmeteo")
 
     if nasa_raw.empty:
-        logger.error(f"NASA POWER ausente → pulando {city_name}")
+        logger.error(f"NASA POWER missing → skipping {city_name}")
         return None
 
-    # === 2. BUSCAR ELEVAÇÃO ===
+    # === 2. FETCH ELEVATION ===
     elevation = await get_elevation(lat, lon)
 
-    # === 3. PRÉ-PROCESSAMENTO FAO-56 ===
+    # === 3. FAO-56 PREPROCESSING ===
     nasa_clean, _ = preprocessing(nasa_raw.set_index("date"), lat)
     om_clean = pd.DataFrame()
 
     if not om_raw.empty:
-        # Conversão vento 10m → 2m VETORIZADA (50× mais rápida!)
+        # VECTORIZED wind conversion 10m → 2m
         if "WS10M" in om_raw.columns:
-            logger.info("Convertendo vento 10m → 2m (vetorizado)...")
+            logger.info("Converting wind 10m → 2m (vectorized)...")
             om_raw["WS2M"] = np.maximum(
                 om_raw["WS10M"] * (4.87 / np.log(67.8 * 10 - 5.42)),
-                0.5,  # limite físico mínimo
+                0.5,  # minimum physical limit
             )
             om_raw = om_raw.drop(columns=["WS10M"], errors="ignore")
         om_clean, _ = preprocessing(om_raw.set_index("date"), lat)
@@ -192,28 +192,28 @@ async def process_city(
     nasa_clean = nasa_clean.reset_index()
     om_clean = om_clean.reset_index() if not om_clean.empty else om_clean
 
-    # === 4. FUSÃO KALMAN VETORIZADA (50× mais rápida!) ===
-    logger.info("->> Fusão Kalman vetorizada...")
+    # === 4. VECTORIZED KALMAN FUSION  ===
+    logger.info("->> Vectorized Kalman fusion...")
     kalman = ClimateKalmanEnsemble()
 
     try:
         fused_df = kalman.fuse_vectorized(
             nasa_df=nasa_clean, om_df=om_clean, lat=lat, lon=lon
         )
-        logger.success(f"Fusão concluída: {len(fused_df)} dias")
+        logger.success(f"Fusion completed: {len(fused_df)} days")
     except Exception as e:
-        logger.error(f"Falha na fusão vetorizada: {e}")
-        logger.info("Usando apenas NASA POWER")
+        logger.error(f"Vectorized fusion failed: {e}")
+        logger.info("Using NASA POWER only")
         fused_df = nasa_clean.copy()
 
-    # Salvar dados fusionados
+    # Save fused data
     PREPROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     fused_output = PREPROCESSED_DIR / f"{city_name}_FUSED.csv"
     fused_df.to_csv(fused_output, index=False)
-    logger.info(f"Dados fusionados salvos: {fused_output.name}")
+    logger.info(f"Fused data saved: {fused_output.name}")
 
-    # === 5. CÁLCULO ETo + KALMAN FINAL ===
-    logger.info("🌾 Calculando ETo + Kalman final...")
+    # === 5. CALCULATE ETo + FINAL KALMAN CORRECTION ===
+    logger.info("🌾 Calculating ETo + final Kalman correction...")
     df_final = calculate_eto_timeseries(
         df=fused_df,
         latitude=lat,
@@ -222,14 +222,14 @@ async def process_city(
         kalman_ensemble=kalman,
     )
 
-    # Salvar dados fusionados COM ETo calculada (para Zenodo)
+    # Save fused data WITH calculated ETo (for Zenodo)
     fused_with_eto = PREPROCESSED_DIR / f"{city_name}_FUSED_ETo.csv"
     df_final.to_csv(fused_with_eto, index=False)
-    logger.info(f"Dados fusionados + ETo salvos: {fused_with_eto.name}")
+    logger.info(f"Fused data + ETo saved: {fused_with_eto.name}")
 
-    # Salvar cache
+    # Save cache
     df_final.to_csv(cache_file, index=False)
-    logger.success(f"{city_name} concluída → {len(df_final)} dias")
+    logger.success(f"{city_name} completed → {len(df_final)} days")
 
     return df_final
 
@@ -240,35 +240,35 @@ def compare_with_xavier(
     output_dir: Path,
 ) -> Optional[Dict[str, Any]]:
     """
-    Validação contra BR-DWGD (Xavier et al., 2016) — padrão-ouro brasileiro.
+    Validation against BR-DWGD (Xavier et al., 2016) - Brazilian gold standard.
 
-    Retorna dicionário com métricas completas (FAO-56 + hidrologia moderna).
-    Inclui KGE (Kling-Gupta Efficiency) — obrigatório em artigos modernos.
+    Returns dictionary with complete metrics (FAO-56 + modern hydrology).
+    Includes KGE (Kling-Gupta Efficiency)
     """
-    logger.info(f"Validando {city_key} contra Xavier BR-DWGD...")
+    logger.info(f"Validating {city_key} against Xavier BR-DWGD...")
 
-    # Buscar arquivo Xavier
+    # Fetch Xavier file
     xavier_file = get_xavier_eto_path(city_key)
 
     if not xavier_file.exists():
-        logger.error(f"Arquivo Xavier ausente: {xavier_file.name}")
+        logger.error(f"Xavier file missing: {xavier_file.name}")
         return None
 
     try:
         df_xavier = pd.read_csv(xavier_file)
         df_xavier["date"] = pd.to_datetime(df_xavier["date"])
     except Exception as e:
-        logger.error(f"Erro lendo Xavier: {e}")
+        logger.error(f"Error reading Xavier: {e}")
         return None
 
-    # Converter date de df_result para datetime se necessário
+    # Convert df_result date to datetime if needed
     if "date" not in df_result.columns and df_result.index.name == "date":
         df_result = df_result.reset_index()
 
     if not pd.api.types.is_datetime64_any_dtype(df_result["date"]):
         df_result["date"] = pd.to_datetime(df_result["date"])
 
-    # Merge (usar eto_final = ETo com correção Kalman final)
+    # Merge (use eto_final = ETo with final Kalman correction)
     df_compare = pd.merge(
         df_result[["date", "eto_final"]],
         df_xavier[["date", "eto_xavier"]],
@@ -276,20 +276,20 @@ def compare_with_xavier(
         how="inner",
     ).dropna(subset=["eto_final", "eto_xavier"])
 
-    if len(df_compare) < 100:  # mais rigoroso que 30
-        logger.warning(f"Dados insuficientes: {len(df_compare)} dias")
+    if len(df_compare) < 100:  # more rigorous than 30
+        logger.warning(f"Insufficient data: {len(df_compare)} days")
         return None
 
     calc = np.array(df_compare["eto_final"].values, dtype=float)
     ref = np.array(df_compare["eto_xavier"].values, dtype=float)
 
-    # MÉTRICAS
+    # METRICS
     mae = float(mean_absolute_error(ref, calc))
     rmse = float(np.sqrt(mean_squared_error(ref, calc)))
     bias = float(np.mean(calc - ref))
     pbias = float(100 * np.sum(calc - ref) / np.sum(ref))
 
-    # Regressão linear
+    # Linear regression
     lr = linregress(ref, calc)
     slope_val = float(lr.slope)
     intercept_val = float(lr.intercept)
@@ -302,13 +302,13 @@ def compare_with_xavier(
         1 - np.sum((calc - ref) ** 2) / np.sum((ref - ref.mean()) ** 2)
     )
 
-    # KGE (Kling-Gupta Efficiency — obrigatório em artigos modernos)
+    # KGE (Kling-Gupta Efficiency - required in modern papers)
     r = np.corrcoef(ref, calc)[0, 1]
     alpha = np.std(calc) / np.std(ref)
     beta = np.mean(calc) / np.mean(ref)
     kge = float(1 - np.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2))
 
-    # Determinar significância estatística
+    # Determine statistical significance
     if p_value < 0.001:
         sig_level = "***"
         p_display = "p < 0.001"
@@ -328,7 +328,7 @@ def compare_with_xavier(
         f"PBIAS={pbias:+.1f}%"
     )
 
-    # === GRÁFICOS PARA PUBLICAÇÃO ===
+    # === PUBLICATION-READY PLOTS ===
     plot_dir = output_dir / "plots"
     plot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -380,12 +380,12 @@ def compare_with_xavier(
     ax1.grid(True, alpha=0.3, linestyle="--")
     ax1.set_aspect("equal", adjustable="box")
 
-    # Adicionar métricas (com KGE!)
+    # Add metrics (with KGE!)
     textstr = "\n".join(
         [
             f"R² = {r2:.3f} {sig_level}",
             f"{p_display}",
-            f"KGE = {kge:.3f}",  # ← nova métrica
+            f"KGE = {kge:.3f}",  # new metric
             f"NSE = {nse:.3f}",
             f"MAE = {mae:.2f} mm/day",
             f"RMSE = {rmse:.2f} mm/day",
@@ -405,7 +405,7 @@ def compare_with_xavier(
         bbox=props,
     )
 
-    # (B) Série temporal
+    # (B) Time series
     ax2 = axes[0, 1]
     ax2.plot(
         df_compare["date"],
@@ -430,7 +430,7 @@ def compare_with_xavier(
     ax2.grid(True, alpha=0.3, linestyle="--")
     ax2.tick_params(axis="x", rotation=45)
 
-    # (C) Resíduos
+    # (C) Residuals
     ax3 = axes[1, 0]
     residuals = calc - ref
     ax3.scatter(df_compare["date"], residuals, alpha=0.3, s=10, color="gray")
@@ -458,7 +458,7 @@ def compare_with_xavier(
     ax3.grid(True, alpha=0.3, linestyle="--")
     ax3.tick_params(axis="x", rotation=45)
 
-    # (D) Distribuição
+    # (D) Distribution
     ax4 = axes[1, 1]
     ax4.hist(
         residuals,
@@ -490,18 +490,18 @@ def compare_with_xavier(
 
     plt.tight_layout(rect=(0, 0.03, 1, 0.97))
 
-    # Salvar
+    # Save plots
     plot_base = plot_dir / f"{city_key}_validation"
     plt.savefig(f"{plot_base}.png", dpi=300, bbox_inches="tight")
     plt.savefig(f"{plot_base}.pdf", dpi=300, bbox_inches="tight")
-    logger.info(f"📊 Gráficos salvos: {plot_base}.[png|pdf]")
+    logger.info(f"📊 Plots saved: {plot_base}.[png|pdf]")
     plt.close()
 
     return {
         "city": city_key,
         "n_days": len(df_compare),
         "r2": round(r2, 4),
-        "kge": round(kge, 4),  # ← nova métrica (revisores adoram)
+        "kge": round(kge, 4),  # new metric (reviewers love it)
         "nse": round(nse, 4),
         "mae": round(mae, 4),
         "rmse": round(rmse, 4),
@@ -519,13 +519,11 @@ async def main(
     end_date: str = "2020-12-31",
     cities_filter: Optional[list] = None,
 ):
-    """Pipeline completo otimizado — 17 cidades MATOPIBA"""
+    """Optimized full pipeline - 17 MATOPIBA cities."""
 
-    logger.info(
-        "🚀 INICIANDO PIPELINE COMPLETO EVAonline — 17 cidades MATOPIBA"
-    )
+    logger.info("🚀 STARTING FULL EVAONLINE PIPELINE - 17 MATOPIBA cities")
 
-    # Carregar coordenadas
+    # Load coordinates
     csv_coords = PROJECT_ROOT / "data" / "info_cities.csv"
     df_coords = pd.read_csv(csv_coords)
     city_coords = {
@@ -543,10 +541,10 @@ async def main(
     total = len(cities_to_process)
 
     for i, (city_key, _) in enumerate(cities_to_process.items(), 1):
-        logger.info(f"\n[{i}/{total}]{city_key}")
+        logger.info(f"\n[{i}/{total}] {city_key}")
 
         if city_key not in city_coords:
-            logger.error(f"Coordenadas não encontradas: {city_key}")
+            logger.error(f"Coordinates not found: {city_key}")
             continue
 
         lat, lon = city_coords[city_key]
@@ -563,36 +561,36 @@ async def main(
                 results.append(metrics)
 
         except Exception as e:
-            logger.error(f"Erro: {city_key} → {str(e)}")
+            logger.error(f"Error: {city_key} → {str(e)}")
             continue
 
-    # Relatório final
+    # Final report
     if results:
         summary = pd.DataFrame(results)
-        summary.to_csv(OUTPUT_DIR / "RESUMO_FINAL.csv", index=False)
+        summary.to_csv(OUTPUT_DIR / "FINAL_SUMMARY.csv", index=False)
 
-        logger.success(f"\n-->>RESUMO FINAL ({len(results)} cidades):")
-        logger.success(f"R² médio: {summary['r2'].mean():.3f}")
-        logger.success(f"KGE médio: {summary['kge'].mean():.3f}")
-        logger.success(f"NSE médio: {summary['nse'].mean():.3f}")
+        logger.success(f"\n-->> FINAL SUMMARY ({len(results)} cities):")
+        logger.success(f"Mean R²: {summary['r2'].mean():.3f}")
+        logger.success(f"Mean KGE: {summary['kge'].mean():.3f}")
+        logger.success(f"Mean NSE: {summary['nse'].mean():.3f}")
         logger.success(
-            f"  MAE médio: {summary['mae'].mean():.3f} ± "
-            f"{summary['mae'].std():.3f} mm/dia"
+            f"  Mean MAE: {summary['mae'].mean():.3f} ± "
+            f"{summary['mae'].std():.3f} mm/day"
         )
-        logger.success(f"  PBIAS médio: {summary['pbias'].mean():.2f}%")
+        logger.success(f"  Mean PBIAS: {summary['pbias'].mean():.2f}%")
 
-    logger.success("\nPIPELINE CONCLUÍDO COM SUCESSO!")
+    logger.success("\nPIPELINE COMPLETED SUCCESSFULLY!")
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Pipeline Completo EVAonline — Versão Otimizada"
+        description="Full EVAonline Pipeline - Optimized Version"
     )
-    parser.add_argument("--start", default="1991-01-01", help="Data inicial")
-    parser.add_argument("--end", default="2020-12-31", help="Data final")
-    parser.add_argument("--cities", nargs="+", help="Cidades específicas")
+    parser.add_argument("--start", default="1991-01-01", help="Start date")
+    parser.add_argument("--end", default="2020-12-31", help="End date")
+    parser.add_argument("--cities", nargs="+", help="Specific cities")
 
     args = parser.parse_args()
 

@@ -1,0 +1,116 @@
+================================================================================
+DESCRIPTIVE STATISTICS REPORT
+EVAonline Validation Dataset (1991-2020)
+Generated: 2025-11-27 00:54:44
+================================================================================
+
+1. DATA SOURCES OVERVIEW
+--------------------------------------------------------------------------------
+
+NASA POWER:
+Cities: 17
+Variables: 7
+Total observations: 1,304,002
+Missing data: 0.00%
+
+Open-Meteo:
+Cities: 17
+Variables: 7
+Total observations: 1,304,002
+Missing data: 0.00%
+
+Xavier:
+Cities: 17
+Variables: 1
+Total observations: 186,286
+Missing data: 0.00%
+
+
+2. REFERENCE EVAPOTRANSPIRATION (ETo) STATISTICS
+--------------------------------------------------------------------------------
+
+Table 1. ETo descriptive statistics by data source (mm/day)
+
+Source                 N     Mean       SD      Min      Q25   Median      Q75      Max      CV%
+--------------------------------------------------------------------------------
+Xavier           186,286     4.30     1.01     0.77     3.62     4.28     4.99     9.11    23.63
+
+
+3. METEOROLOGICAL VARIABLES STATISTICS
+--------------------------------------------------------------------------------
+
+
+Temperature Mean (°C)
+Source              Mean       SD      Min      Max      CV%
+------------------------------------------------------------
+NASA POWER         26.26     2.23     7.28    35.09     8.58
+Open-Meteo         26.29     1.86     8.30    34.10     7.17
+
+Temperature Maximum (°C)
+Source              Mean       SD      Min      Max      CV%
+------------------------------------------------------------
+NASA POWER         31.96     3.21    13.29    42.98    10.07
+Open-Meteo         30.94     2.55    11.60    40.50     8.24
+
+Temperature Minimum (°C)
+Source              Mean       SD      Min      Max      CV%
+------------------------------------------------------------
+NASA POWER         21.25     1.99     0.23    29.81     9.62
+Open-Meteo         22.05     1.53     2.30    29.10     7.19
+
+Relative Humidity (%)
+Source              Mean       SD      Min      Max      CV%
+------------------------------------------------------------
+NASA POWER         63.79    16.98    18.82    96.23    27.01
+Open-Meteo         66.26    16.38    19.00    98.00    25.17
+
+Wind Speed at 2m (m/s)
+Source              Mean       SD      Min      Max      CV%
+------------------------------------------------------------
+NASA POWER          1.99     0.73     0.28     6.26    36.42
+Open-Meteo          2.32     0.73     0.50    13.35    33.30
+
+Solar Radiation (MJ/m²/day)
+Source              Mean       SD      Min      Max      CV%
+------------------------------------------------------------
+NASA POWER         19.94     4.29     1.17    32.44    21.56
+Open-Meteo         19.76     4.21     1.48    32.41    21.37
+
+Precipitation (mm/day)
+Source              Mean       SD      Min      Max      CV%
+------------------------------------------------------------
+NASA POWER          3.23     6.16     0.00   120.31   196.40
+Open-Meteo          3.07     6.45     0.00   231.60   221.02
+
+
+3. DATA QUALITY ASSESSMENT
+--------------------------------------------------------------------------------
+
+NASA POWER:
+  Complete data: 100.00%
+  Missing data: 0.00%
+  Outliers detected: 0 (0.00%)
+  Valid data after QC: 100.00%
+  Temporal coverage: 1991-01-01 to 2020-12-31
+  Total days: 10,958
+
+Open-Meteo:
+  Complete data: 100.00%
+  Missing data: 0.00%
+  Outliers detected: 0 (0.00%)
+  Valid data after QC: 100.00%
+  Temporal coverage: 1991-01-01 to 2020-12-31
+  Total days: 10,958
+
+Xavier:
+  Complete data: 100.00%
+  Missing data: 0.00%
+  Outliers detected: 0 (0.00%)
+  Valid data after QC: 100.00%
+  Temporal coverage: 1991-01-01 to 2020-12-31
+  Total days: 10,958
+
+
+================================================================================
+End of Report
+================================================================================

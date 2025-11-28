@@ -10,64 +10,31 @@
 
 ## 📋 Overview
 
-This repository contains the complete validation dataset for **EVAOnline**, demonstrating the superior performance of Kalman fusion for reference evapotranspiration (ETo) estimation. The dataset includes daily ETo values from **four sources** across **17 Brazilian cities** in the MATOPIBA region (2017-2024).
+This repository contains the complete validation dataset for **EVAonline**, an adaptive Kalman fusion system integrating **6 climate APIs** (NASA POWER, Open-Meteo Archive/Forecast, Met Norway, NWS USA) for reference evapotranspiration (ETo) estimation. This validation evaluates ETo accuracy using **2 global reanalysis sources** (NASA POWER + Open-Meteo Archive) across **17 Brazilian cities** in the MATOPIBA region plus Piracicaba/SP (1991-2020, 30 years, 186,287 observations).
 
-### Key Results
+### 🎯 Key Results
 
-| Method | R² | MAE (mm/day) | RMSE (mm/day) | PBIAS (%) |
-|--------|-------|--------------|---------------|-----------|
-| **Xavier et al. (Reference)** | 1.000 | 0.00 | 0.00 | 0.0 |
-| **EVAOnline (Kalman)** | 0.610 | **0.48** | 0.61 | **+0.6** |
-| Open-Meteo Original | 0.690 | 0.67 | 0.85 | +8.8 |
-| NASA POWER | 0.745 | 1.09 | 1.39 | +23.2 |
+| Method | R² | KGE | NSE | MAE (mm/day) | RMSE (mm/day) | PBIAS (%) |
+|--------|-------|------|------|--------------|---------------|-----------|
+| **Xavier et al. (Reference)** | 1.000 | 1.000 | 1.000 | 0.00 | 0.00 | 0.0 |
+| **EVAonline (Kalman Fusion)** | **0.694** | **0.814** | **0.676** | **0.423** | **0.566** | **+0.71** |
+| OpenMeteo API (ERA5-Land) | 0.649 | 0.584 | 0.216 | 0.690 | 0.860 | +8.27 |
+| NASA POWER (FAO-56 calc) | 0.740 | 0.411 | -0.363 | 0.845 | 1.117 | +15.78 |
+| OpenMeteo (FAO-56 calc) | 0.636 | 0.432 | -0.547 | 0.859 | 1.097 | +13.02 |
 
-**✅ EVAOnline achieves:**
-- **56% lower MAE** than NASA POWER
-- **28% lower MAE** than Open-Meteo
-- **Near-zero bias** (0.6% vs 23.2% for NASA)
-- Effective noise filtering while preserving accuracy
+**✅ EVAonline achieves:**
+- **Best KGE = 0.814** (98% higher than NASA, 88% higher than OpenMeteo calc, 39% higher than OpenMeteo API)
+- **Lowest MAE = 0.423 mm/day** (50% lower than NASA, 51% lower than OpenMeteo calc)
+- **Near-zero bias (0.71%)** vs NASA (+15.78%), OpenMeteo calc (+13.02%), OpenMeteo API (+8.27%)
+- **Most consistent performance** across all 17 cities (smallest metric amplitude)
 
----
-
-## 📂 Repository Structure
-
-```
-EVAonline_validation_v1.0.0/
-├── README.md                              # This file
-├── LICENSE                                 # AGPL-3.0 license
-├── CITATION.cff                           # Citation metadata
-├── zenodo.json                            # Zenodo metadata
-├── requirements.txt                       # Python dependencies
-├── environment.yml                        # Conda environment
-├── data_manifest.csv                      # Complete file listing with checksums
-├── all_cities_daily_eto_1994_2024.csv    # Consolidated dataset (recommended!)
-│
-├── data/                                  # Raw data by source (68 files)
-│   ├── xavier/                           # Xavier et al. reference (17 cities)
-│   ├── nasa_power/                       # NASA POWER data (17 cities)
-│   ├── open_meteo/                       # Open-Meteo Archive (17 cities)
-│   └── evaonline_fused/                  # EVAOnline Kalman results (17 cities)
-│
-├── scripts/                               # Validation and analysis scripts
-│   ├── evaonline_eto.py                  # Kalman fusion implementation
-│   ├── verify_xavier_real_data.py        # Data authenticity verification
-│   └── generate_data_manifest.py         # Generate file manifest
-│
-├── notebooks/                             # Jupyter notebooks
-│   └── quick_start_example.ipynb         # Quick start guide
-│
-├── docs/                                  # Documentation
-│   └── kalman_methodology.pdf            # Detailed Kalman filter methodology
-│
-└── figures/                               # Generated figures
-    └── quick_start_example.png           # Example visualization
-```
+📊 **Detailed analysis**: See [docs/performance_analysis.md](docs/performance_analysis.md)
 
 ---
 
 ## 🚀 Quick Start
 
-### Installation (< 1 minute)
+### Installation
 
 ```bash
 # Using pip
@@ -78,14 +45,12 @@ conda env create -f environment.yml
 conda activate evaonline-validation
 ```
 
-### Load and Analyze Data (< 2 minutes)
-
-**Option 1: Use consolidated file (recommended)**
+### Load Data
 
 ```python
 import pandas as pd
 
-# Load all data at once
+# Recommended: Use consolidated file
 df = pd.read_csv("all_cities_daily_eto_1994_2024.csv", parse_dates=["date"])
 
 # Filter by city
@@ -95,103 +60,135 @@ piracicaba = df[df["city"] == "Piracicaba_SP"]
 print(piracicaba[["date", "eto_xavier", "eto_nasa", "eto_openmeteo", "eto_evaonline"]].head())
 ```
 
-**Option 2: Load individual files**
+📓 **Interactive tutorial**: See `notebooks/quick_start_example.ipynb`
 
-```python
-import pandas as pd
-from pathlib import Path
+---
 
-city = "Piracicaba_SP"
-data_dir = Path("data")
+## 📂 Repository Structure
 
-xavier = pd.read_csv(data_dir / "xavier" / f"{city}.csv")
-evaonline = pd.read_csv(data_dir / "evaonline_fused" / f"{city}.csv")
 ```
-
-**Option 3: Run the example notebook**
-
-```bash
-jupyter notebook notebooks/quick_start_example.ipynb
+EVAonline_validation_v1.0.0/
+├── data/                          # Validation datasets
+│   ├── original_data/            # Raw sources (Xavier, NASA, OpenMeteo)
+│   ├── 4_eto_nasa_only/          # NASA ETo (Script 4)
+│   ├── 4_eto_openmeteo_only/     # OpenMeteo ETo (Script 4)
+│   ├── 6_validation_full_pipeline/ # EVAonline Kalman fusion (Script 6)
+│   └── 7_comparison_all_sources/  # 4-source comparison (Script 7)
+│
+├── scripts/                       # Validation scripts
+│   ├── 4_calculate_eto_data_from_openmeteo_or_nasapower.py
+│   ├── 5_validate_eto_calc.py    # Single-source validation
+│   ├── 6_validate_full_pipeline.py # Full Kalman fusion ⭐
+│   └── 7_compare_all_eto_sources.py # Comprehensive comparison
+│
+├── docs/                          # Detailed documentation
+│   ├── data_sources_specifications.md   # API technical specs
+│   ├── wind_height_conversion.md        # FAO-56 Eq. 47 methodology
+│   ├── kalman_methodology.md            # Kalman filter details
+│   ├── performance_analysis.md          # Detailed results
+│   ├── api_operational_details.md       # Operational guidelines
+│   └── validation_eto_evaonline.md      # Full validation report
+│
+└── notebooks/                     # Jupyter tutorials
+    └── quick_start_example.ipynb
 ```
 
 ---
 
-## 📊 Dataset Description
+## 📊 Data Sources
 
-### Data Sources
+### Overview
 
-1. **Xavier et al. Reference** (1961-2024)
-   - Source: Xavier et al. 2016, 2022 - Brazilian Daily Weather Gridded Data
-   - Website: https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data
-   - Papers: 
-     * [Xavier et al. 2016 (IJC)](https://doi.org/10.1002/joc.4518) - Original dataset (1980-2013)
-     * [Xavier et al. 2022 (IJC)](https://doi.org/10.1002/joc.7731) - Updated dataset (1961-2020, extended to 2024)
-   - Variables: Daily ETo (mm/day) calculated from gridded meteorological data
-   - Spatial resolution: 0.25° × 0.25° (~27.5 km) covering entire Brazil
-   - Temporal coverage: 1961-2024 (varies by city)
-   - Methodology: 
-     * Interpolated from 3,625+ weather stations (INMET network)
-     * Thin-plate spline interpolation with elevation covariate
-     * Cross-validation: R² > 0.90 for most variables
-   - Quality control: Multiple validation steps, bias correction, homogeneity tests
-   - Update 2022: Extended temporal range, improved precipitation estimates
-   - Purpose: Gold standard reference for Brazil agricultural/hydrological studies
+| Source | Resolution | Period | Latency | Purpose |
+|--------|-----------|--------|---------|---------||
+| **Xavier BR-DWGD** | 0.1° (~10 km) | 1961-2024 | 6-12 months | Reference ✅ |
+| **NASA POWER** | 0.5° × 0.625° (~55 km) | 1981-present | 5-7 days | Global reanalysis (validation) |
+| **Open-Meteo Archive** | 0.1° (~10 km) | 1940-present | 5-7 days | High-res reanalysis (validation) |
+| **Open-Meteo Forecast** | 0.1° (~10 km) | 7-day forecast | Real-time | Global forecast |
+| **Met Norway** | ~1 km | 10-day forecast | Real-time | Regional (Europe) |
+| **NWS USA** | Station/grid | 7-day forecast | Real-time | Regional (USA) |
+| **EVAonline** | Multi-resolution | 1990-present | Real-time | Kalman fusion ⭐ |
 
-2. **NASA POWER** (2017-2024)
-   - Source: NASA POWER (Prediction Of Worldwide Energy Resources) v2.5
-   - Website: https://power.larc.nasa.gov/
-   - API: https://power.larc.nasa.gov/api/pages/
-   - Data source: MERRA-2 (Modern-Era Retrospective analysis for Research and Applications, Version 2)
-   - Variables retrieved:
-     * T2M: Temperature at 2 meters (°C)
-     * T2M_MIN: Minimum temperature at 2 meters (°C)
-     * T2M_MAX: Maximum temperature at 2 meters (°C)
-     * RH2M: Relative humidity at 2 meters (%)
-     * WS2M: Wind speed at 2 meters (m/s)
-     * ALLSKY_SFC_SW_DWN: All sky surface shortwave downward irradiance (MJ/m²/day)
-   - Spatial resolution: 0.5° × 0.5° (~55 km at equator)
-   - Temporal resolution: Daily averages from 1981 to near real-time
-   - Methodology:
-     * Global atmospheric reanalysis assimilating satellite and ground observations
-     * ETo calculated using FAO-56 Penman-Monteith with POWER meteorological inputs
-     * Grid-cell values represent area average (not point measurements)
-   - Data quality: Validated against ground stations globally, suitable for solar and agricultural applications
-   - Access: Free API with no authentication required
-   - Purpose: Widely used for renewable energy and agricultural assessments worldwide
+### Key Technical Details
 
-3. **Open-Meteo Archive** (2017-2024)
-   - Source: Open-Meteo Historical Weather API
-   - Website: https://open-meteo.com/
-   - API: https://open-meteo.com/en/docs/historical-weather-api
-   - Data source: ERA5-Land reanalysis (ECMWF - European Centre for Medium-Range Weather Forecasts)
-   - Variables retrieved:
-     * temperature_2m: Hourly temperature at 2 meters (°C) → daily aggregated
-     * relative_humidity_2m: Hourly relative humidity at 2 meters (%) → daily aggregated
-     * wind_speed_10m: Hourly wind speed at 10 meters (m/s) → converted to 2m and daily aggregated
-     * shortwave_radiation: Hourly surface solar radiation downward (W/m²) → daily sum in MJ/m²
-     * et0_fao_evapotranspiration: Daily reference evapotranspiration (mm/day) - **original Open-Meteo calculation**
-   - Spatial resolution: ~9 km (0.1° × 0.1°, based on ERA5-Land)
-   - Temporal resolution: Hourly data (1950-present), aggregated to daily
-   - Temporal coverage: Complete historical archive from 1950 to 7 days ago
-   - Methodology:
-     * ERA5-Land: Enhanced resolution version of ERA5 reanalysis
-     * Combines model forecasts with observations using data assimilation
-     * et0_fao_evapotranspiration: Calculated using FAO-56 Penman-Monteith based on hourly ERA5-Land variables
-     * Elevation adjustment: Uses 90m DEM for statistical downscaling
-   - Data quality: High-quality global reanalysis, widely used in climate research
-   - Access: Free API with generous rate limits, no authentication for non-commercial use
-   - Special note: Wind speed converted from 10m to 2m using logarithmic wind profile (u₂ = u₁₀ × 4.87 / ln(67.8 × z - 5.42))
-   - Purpose: Global weather data for research, agriculture, and renewable energy applications
+**Wind Speed Measurement Height** ⚠️ **Critical**:
+- **NASA POWER**: Native 2m wind ✅ (no conversion)
+- **Open-Meteo**: Native 10m wind → **must convert to 2m** using FAO-56 Eq. 47
+- **Impact**: Not converting causes ~15% ETo overestimation
 
-4. **EVAOnline Kalman Fusion** (2017-2024)
-   - Source: EVAOnline v1.0.0
-   - Method: Kalman ensemble fusion (NASA + Open-Meteo)
-   - Features: Dynamic bias correction, covariance estimation
-   - Validation: Brazil-specific limits (Xavier et al. 2016, 2022)
+**Data Aggregation**:
+- Both APIs provide **daily data directly** (pre-aggregated)
+- No hourly-to-daily conversion performed by EVAonline
+- Solar radiation already in MJ/m²/day (not W/m²)
 
-### Study Area: MATOPIBA Region
+📖 **Technical specifications**: [docs/data_sources_specifications.md](docs/data_sources_specifications.md)  
+📖 **Wind conversion methodology**: [docs/wind_height_conversion.md](docs/wind_height_conversion.md)  
+📖 **API operational details**: [docs/api_operational_details.md](docs/api_operational_details.md)
 
-**17 Cities** (Maranhão, Tocantins, Piauí, Bahia):
+---
+
+## 🔬 Methodology
+
+### FAO-56 Penman-Monteith
+
+Standard equation for reference evapotranspiration:
+
+$$
+\\text{ETo} = \\frac{0.408 \\cdot \\Delta \\cdot (R_n - G) + \\gamma \\cdot \\frac{900}{T + 273} \\cdot u_2 \\cdot (e_s - e_a)}{\\Delta + \\gamma \\cdot (1 + 0.34 \\cdot u_2)}
+$$
+
+**Critical**: $u_2$ must be wind speed at **2m height**
+
+### Kalman Fusion
+
+EVAonline implements an **adaptive Kalman filter**:
+
+1. **State estimation**: Combines NASA + Open-Meteo with adaptive weighting
+2. **Process noise**: Seasonal (from Xavier monthly variability)
+3. **Measurement noise**: R_NASA=0.3, R_OpenMeteo=0.4 (relative uncertainty)
+4. **Bias correction**: Anchored to Xavier BR-DWGD climatology
+5. **Output**: Fused ETo + uncertainty estimates
+
+**Result**: 98% improvement in KGE, near-zero bias
+
+📖 **Detailed methodology**: [docs/kalman_methodology.md](docs/kalman_methodology.md)
+
+---
+
+## 📈 Validation Scripts
+
+### Run Validations
+
+```bash
+# Script 4: Calculate ETo from raw data (NASA or OpenMeteo)
+python scripts/4_calculate_eto_data_from_openmeteo_or_nasapower.py --source nasa
+python scripts/4_calculate_eto_data_from_openmeteo_or_nasapower.py --source openmeteo
+
+# Script 5: Single-source validation (no Kalman)
+python scripts/5_validate_eto_calc.py
+
+# Script 6: Full pipeline with Kalman fusion ⭐ RECOMMENDED
+python scripts/6_validate_full_pipeline.py
+
+# Script 7: Compare all 4 ETo sources
+python scripts/7_compare_all_eto_sources.py
+```
+
+### Key Outputs
+
+| Script | Output Directory | Description |
+|--------|-----------------|-------------|
+| 4 | `data/4_eto_nasa_only/` | NASA ETo calculated with FAO-56 |
+| 4 | `data/4_eto_openmeteo_only/` | OpenMeteo ETo calculated with FAO-56 |
+| 6 | `data/6_validation_full_pipeline/` | **EVAonline full Kalman fusion** ⭐ |
+| 7 | `data/7_comparison_all_sources/` | Comprehensive 4-source comparison |
+
+---
+
+## 🌍 Study Area
+
+**17 Cities** in MATOPIBA region (Maranhão, Tocantins, Piauí, Bahia) + control site:
+
 - Alvorada do Gurguéia, PI
 - Araguaína, TO
 - Balsas, MA
@@ -204,93 +201,16 @@ jupyter notebook notebooks/quick_start_example.ipynb
 - Imperatriz, MA
 - Luiz Eduardo Magalhães, BA
 - Pedro Afonso, TO
-- Piracicaba, SP *(control site)*
+- **Piracicaba, SP** *(control site)*
 - Porto Nacional, TO
 - São Desidério, BA
 - Tasso Fragoso, MA
 - Uruçuí, PI
 
-![Study Area Map](figures/study_area_map.png)
+**Period**: 1991-01-01 to 2020-12-31 (30 years)  
+**Total observations**: 186,286 daily ETo values (17 cities × 10,958 days)
 
-**Figure 1**: Geographic distribution of the 17 study cities across the MATOPIBA region and Piracicaba control site in Brazil. The MATOPIBA region (Maranhão, Tocantins, Piauí, Bahia) represents Brazil's agricultural frontier. Red markers indicate validation sites spanning approximately 8° latitude and 10° longitude, covering diverse climatic conditions.
-
-**Map Data Sources**: 
-- MATOPIBA definition: MAGALHÃES, L. A.; MIRANDA, E. E. de. [MATOPIBA: Quadro Natural](https://www.infoteca.cnptia.embrapa.br/infoteca/handle/doc/1037412). Campinas: Embrapa, 2014. (Nota Técnica GITE, 5)
-- Brazil boundaries: IBGE. [Mapa de Clima do Brasil](http://www.visualizador.inde.gov.br/), 2002. [Downloads](https://www.ibge.gov.br/geociencias/informacoes-ambientais/climatologia/15817-clima.html)
-
-**Period**: 2017-01-01 to 2024-12-31  
-**Total observations**: 186,286 daily ETo values  
-**Outliers corrected**: 10 values (0.005%) using Brazil-specific validation limits
-
----
-
-## 🔬 Methodology
-
-### FAO-56 Penman-Monteith Equation
-
-Reference evapotranspiration calculated using the standard FAO-56 equation:
-
-```
-ETo = (0.408 * Δ * (Rn - G) + γ * (900 / (T + 273)) * u2 * (es - ea)) / (Δ + γ * (1 + 0.34 * u2))
-```
-
-Where:
-- **ETo**: Reference evapotranspiration (mm/day)
-- **Rn**: Net radiation (MJ/m²/day)
-- **G**: Soil heat flux (MJ/m²/day)
-- **T**: Mean air temperature (°C)
-- **u2**: Wind speed at 2m (m/s)
-- **es**: Saturation vapor pressure (kPa)
-- **ea**: Actual vapor pressure (kPa)
-- **Δ**: Slope of vapor pressure curve (kPa/°C)
-- **γ**: Psychrometric constant (kPa/°C)
-
-### Kalman Fusion Algorithm
-
-EVAOnline implements an **ensemble Kalman filter** with:
-
-1. **State vector**: Combined NASA + Open-Meteo ETo estimates
-2. **Measurement model**: Daily observations from both sources
-3. **Process noise**: Dynamic covariance estimation
-4. **Bias correction**: Real-time adjustment based on Xavier reference
-5. **Validation limits**: Brazil-specific ranges (Xavier et al. 2016, 2022)
-   - Temperature: -30 to 50°C
-   - Precipitation: 0-450 mm
-   - Solar radiation: 0-40 MJ/m²/day
-   - Wind speed: 0-100 m/s
-
-**Key advantages**:
-- Reduces random noise from individual sources
-- Corrects systematic biases automatically
-- Maintains physical plausibility through validation
-- Provides uncertainty estimates
-
-For detailed methodology, see [`docs/kalman_methodology.pdf`](docs/kalman_methodology.pdf)
-
----
-
-## 📈 Performance Metrics
-
-### Aggregate Statistics (17 Cities, 2017-2024)
-
-| Metric | NASA POWER | Open-Meteo | EVAOnline |
-|--------|------------|------------|-----------|
-| **R²** | 0.745 ± 0.056 | 0.690 ± 0.059 | **0.610 ± 0.081** |
-| **MAE (mm/day)** | 1.093 ± 0.338 | 0.670 ± 0.092 | **0.478 ± 0.030** |
-| **RMSE (mm/day)** | 1.386 ± 0.413 | 0.853 ± 0.124 | **0.609 ± 0.041** |
-| **PBIAS (%)** | +23.2 ± 7.3 | +8.8 ± 3.0 | **+0.6 ± 0.5** |
-| **NSE** | 0.734 ± 0.063 | 0.688 ± 0.059 | **0.604 ± 0.081** |
-
-### Why Lower R² but Better MAE?
-
-EVAOnline's **lower R² (0.61)** with **superior MAE (0.48)** demonstrates effective **noise filtering**:
-
-- **High R² methods** (NASA, Open-Meteo) capture noise and signal together
-- **Kalman fusion** removes high-frequency noise while preserving the mean trend
-- **Result**: Lower correlation but more accurate absolute values
-- **Agricultural relevance**: MAE and PBIAS matter more than R² for irrigation scheduling
-
-This is a **feature, not a bug** - the system prioritizes practical accuracy over statistical correlation.
+![Study Area Map](data/1_figures/study_area_map.png)
 
 ---
 
@@ -299,12 +219,12 @@ This is a **feature, not a bug** - the system prioritizes practical accuracy ove
 If you use this dataset, please cite:
 
 ```bibtex
-@dataset{silviane2025evaonline,
-  author       = {Silviane, Angela},
-  title        = {{EVAOnline Validation Dataset: Kalman Fusion 
-                   System for Reference Evapotranspiration in 
-                   Brazil (2017-2024)}},
-  year         = 2025,
+@dataset{soares2025evaonline,
+  author       = {Soares, Ângela Silviane Moura Cunha and
+                  Maciel, Carlos Dias and
+                  Marques, Patricia Angélica Alves},
+  title        = {EVAonline Validation Dataset v1.0.0: Kalman Fusion System for Reference Evapotranspiration in Brazil (1991-2020)},
+  year         = {2025},
   publisher    = {Zenodo},
   version      = {1.0.0},
   doi          = {10.5281/zenodo.XXXXXXX},
@@ -315,187 +235,97 @@ If you use this dataset, please cite:
 **Also cite the reference data:**
 
 ```bibtex
-@article{https://doi.org/10.1002/joc.7731,
-author = {Xavier, Alexandre C. and Scanlon, Bridget R. and King, Carey W. and Alves, Aline I.},
-title = {New improved Brazilian daily weather gridded data (1961–2020)},
-journal = {International Journal of Climatology},
-volume = {42},
-number = {16},
-pages = {8390-8404},
-keywords = {gridded data, interpolation, meteorological data, meteorological variables, precipitation, temperature},
-doi = {https://doi.org/10.1002/joc.7731},
-url = {https://rmets.onlinelibrary.wiley.com/doi/abs/10.1002/joc.7731},
-eprint = {https://rmets.onlinelibrary.wiley.com/doi/pdf/10.1002/joc.7731},
-abstract = {Abstract The demand for meteorological gridded datasets has increased within the last few years to inform studies such those in climate, weather, and agriculture. These studies require those data to be readily usable in standard formats with continuous spatial and temporal coverage. Since 2016, Brazil has a daily gridded meteorological data set with spatial resolution of 0.25° × 0.25° from January 1, 1980 to December 31, 2013 which was well received by the community. The main objective of this work is to improve the Brazilian meteorological data set. We do this by increasing the resolution of the minimum and maximum temperature (Tmax and Tmin) gridded interpolations from 0.25° × 0.25° to 0.1° × 0.1° by incorporating data on topographic relief, and increasing the time period covered (January 1, 1961–July 31, 2020). Besides Tmax and Tmin, we also gridded precipitation (pr), solar radiation (Rs), wind speed (u2), and relative humidity (RH) using observed data from 11,473 rain gauges and 1,252 weather stations. By means of ranked cross-validation statistics, we selected the best interpolation among inverse distance weighting and angular distance weighting methods. We determined that interpolations for Tmax and Tmin are improved by using the elevation of a query point, that accounts for topographic relief, and a temperature lapse rate. Even though this new version has ≈25 years more data relative to the previous one, statistics from cross-validation were similar. To allow researchers to assess the performance of the interpolation relative to station data in the area, we provide two types of gridded controls.},
-year = {2022}
-}
-
-@article{xavier2022update,
-  title={An update of Xavier, Scanlon, and King (2016) daily precipitation gridded data set for the Brazil},
-  author={Xavier, Alexandre Candido and Scanlon, Bridget R and King, Carey W},
-  journal={International Journal of Climatology},
-  volume={42},
-  number={16},
-  pages={9248--9259},
-  year={2022},
-  doi={10.1002/joc.7731},
-  url={https://rmets.onlinelibrary.wiley.com/doi/10.1002/joc.7731}
+@misc{xavier2024brdwgd,
+  author       = {Xavier, Alexandre Candido},
+  title        = {Brazilian Daily Weather Gridded Data (BR-DWGD)},
+  year         = {2024},
+  howpublished = {\url{https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data}},
+  note         = {Daily gridded meteorological data (1961/01/01-2024/03/20), 0.1° resolution, 3,625+ stations}
 }
 ```
 
-See [`CITATION.cff`](CITATION.cff) for machine-readable citation metadata.
+See [`CITATION.cff`](CITATION.cff) for machine-readable metadata.
+
+---
+
+## 📚 Documentation
+
+### Core Documentation
+
+- [**Data Sources Specifications**](docs/data_sources_specifications.md) - Technical details of NASA POWER, Open-Meteo, Xavier
+- [**Wind Height Conversion**](docs/wind_height_conversion.md) - FAO-56 Equation 47 methodology (10m → 2m)
+- [**Kalman Methodology**](docs/kalman_methodology.md) - Adaptive Kalman filter implementation
+- [**Performance Analysis**](docs/performance_analysis.md) - Detailed results and spatial resolution impact
+- [**API Operational Details**](docs/api_operational_details.md) - Rate limits, caching, gap filling strategies
+- [**Validation Report**](docs/validation_eto_evaonline.md) - Complete validation study
+
+### Additional Resources
+
+- [Study Area Map Generation](docs/study_area_map_generation.md)
+- [Quick Start Notebook](notebooks/quick_start_example.ipynb)
+- [CITATION.cff](CITATION.cff) - Citation metadata
 
 ---
 
 ## 🔐 Data Integrity
 
-All data files are listed in [`data_manifest.csv`](data_manifest.csv) with:
-- **Filename** and **category**
-- **Description** and **source**
-- **File size** (MB)
-- **MD5 checksum** for verification
+All data files listed in [`data_manifest.csv`](data_manifest.csv) with MD5 checksums.
 
-To verify data integrity:
-
+Verify integrity:
 ```bash
-# Generate manifest (includes checksums)
 python scripts/generate_data_manifest.py
-
-# Verify a specific file (example)
-md5sum data/xavier/Piracicaba_SP.csv
-# Compare with value in data_manifest.csv
+md5sum data/xavier/Piracicaba_SP.csv  # Compare with manifest
 ```
 
 ---
 
-## 📦 Data Access
+## 📜 License
 
-### Recommended: Consolidated File
-
-The **easiest way** to use this dataset:
-
-```python
-df = pd.read_csv("all_cities_daily_eto_1994_2024.csv", parse_dates=["date"])
-```
-
-**Columns:**
-- `date`: Date (YYYY-MM-DD)
-- `city`: City name
-- `eto_xavier`: Xavier et al. reference (mm/day)
-- `eto_nasa`: NASA POWER (mm/day)
-- `eto_openmeteo`: Open-Meteo (mm/day)
-- `eto_evaonline`: EVAOnline Kalman fusion (mm/day)
-
-**Advantages:**
-- Single file, all cities
-- Ready for analysis
-- No need to merge sources
-- ~15 MB (manageable size)
-
-### Alternative: Individual Files
-
-If you prefer individual city files by source:
-
-```python
-from pathlib import Path
-
-city = "Piracicaba_SP"
-xavier = pd.read_csv(f"data/xavier/{city}.csv")
-nasa = pd.read_csv(f"data/nasa_power/{city}.csv")
-openmeteo = pd.read_csv(f"data/open_meteo/{city}.csv")
-evaonline = pd.read_csv(f"data/evaonline_fused/{city}.csv")
-```
-
----
-
-## 🛠️ Reproducibility
-
-### Validation Scripts
-
-All validation analyses are reproducible:
-
-```bash
-# Run EVAOnline Kalman fusion
-python scripts/evaonline_eto.py
-
-# Verify Xavier data authenticity
-python scripts/verify_xavier_real_data.py
-
-# Generate data manifest
-python scripts/generate_data_manifest.py
-```
-
-### Jupyter Notebooks
-
-Interactive analysis:
-
-```bash
-jupyter notebook notebooks/quick_start_example.ipynb
-```
-
-**Runtime**: < 2 minutes  
-**Output**: Performance metrics + time series visualization
+- **Code**: AGPL-3.0 (see [LICENSE](LICENSE))
+- **Data**: 
+  - Xavier BR-DWGD: [See publication terms](https://doi.org/10.1002/joc.7731)
+  - NASA POWER: Public Domain
+  - Open-Meteo: CC BY 4.0
 
 ---
 
 ## 🤝 Contributing
 
-This is a **dataset release** associated with the EVAOnline software publication. For software contributions, see the main repository: [github.com/angelasilviane/EVAONLINE](https://github.com/angelasilviane/EVAONLINE)
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
 
-For dataset issues or questions:
-- Open an issue on GitHub
-- Contact: angelasilviane@uft.edu.br
-
----
-
-## 📄 License
-
-This dataset is licensed under the **GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)**.
-
-**Key points:**
-- ✅ **Free to use** for any purpose
-- ✅ **Free to share** and redistribute
-- ✅ **Free to modify** and create derivatives
-- ⚠️ **Must share** modifications under the same license
-- ⚠️ **Must provide** source code if used in network services
-- ⚠️ **Must cite** original dataset
-
-See [`LICENSE`](LICENSE) for full terms.
-
----
-
-## 🔗 Related Resources
-
-- **Main Software**: [EVAOnline GitHub Repository](https://github.com/angelasilviane/EVAONLINE)
-- **Xavier Dataset**: 
-  - [Brazilian Daily Weather Gridded Data (Website)](https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data)
-  - [Xavier et al. 2016 Paper (DOI: 10.1002/joc.4518)](https://doi.org/10.1002/joc.4518)
-  - [Xavier et al. 2022 Update (DOI: 10.1002/joc.7731)](https://doi.org/10.1002/joc.7731)
-- **NASA POWER**: [NASA POWER API](https://power.larc.nasa.gov/)
-- **Open-Meteo**: [Open-Meteo Historical API](https://open-meteo.com/en/docs/historical-weather-api)
-- **FAO-56**: [Crop Evapotranspiration Guidelines](http://www.fao.org/3/x0490e/x0490e00.htm)
+For major changes, open an issue first to discuss proposed changes.
 
 ---
 
 ## 📧 Contact
 
-**Angela Silviane**  
-Universidade Federal do Tocantins  
-Email: angelasilviane@uft.edu.br  
-ORCID: [0000-0000-0000-0000](https://orcid.org/0000-0000-0000-0000)
+- **Repository**: https://github.com/silvianesoares/EVAONLINE
+- **Issues**: https://github.com/silvianesoares/EVAONLINE/issues
+- **Zenodo**: https://doi.org/10.5281/zenodo.XXXXXXX
 
 ---
 
 ## 🙏 Acknowledgments
 
-This work builds upon:
-- **Xavier et al. (2016, 2022)** for providing the high-quality gridded meteorological and ETo reference dataset for Brazil (1961-2024), interpolated from 3,625+ weather stations with rigorous quality control
-- **NASA POWER** for freely accessible global meteorological reanalysis data
-- **Open-Meteo** for ERA5-Land based climate data and original ETo estimates
-- **FAO** for the standard Penman-Monteith methodology (Irrigation and Drainage Paper No. 56)
+**Data Providers**:
+- NASA Langley Research Center POWER Project (https://power.larc.nasa.gov/)
+- Open-Meteo / ECMWF ERA5-Land (https://open-meteo.com/)
+- Met Norway Locationforecast API (https://api.met.no/)
+- National Weather Service USA (https://www.weather.gov/)
+- OpenTopoData Elevation API (https://www.opentopodata.org/)
+- Xavier et al. / Brazilian Daily Weather Gridded Data (BR-DWGD)
+
+**Funding**:
+- [Add funding sources if applicable]
+
+**References**:
+- Allen, R.G., et al., 1998. FAO Irrigation and Drainage Paper 56
+- Xavier, A.C., et al., 2022. International Journal of Climatology
+- Kalman, R.E., 1960. Journal of Basic Engineering
 
 ---
 
-**Last updated**: November 21, 2025  
-**Version**: 1.0.0  
-**DOI**: 10.5281/zenodo.XXXXXXX (update after deposit)
+**Last updated**: November 2025

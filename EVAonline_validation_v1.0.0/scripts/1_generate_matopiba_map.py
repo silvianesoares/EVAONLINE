@@ -1,6 +1,8 @@
-# Matopiba Cities Map: Script to generate a two-panel map showing Brazil and the MATOPIBA region,
-# With climate zones, meteorological stations, and a climate legend.
-# Author: Ângela S. M. C. Soares, Profº Carlos D. Maciel and Profª Patricia A. A. Marques
+# Matopiba Cities Map: Script to generate a two-panel map showing Brazil
+# and the MATOPIBA region, with climate zones, meteorological stations,
+# and a climate legend.
+# Author: Ângela S. M. C. Soares, Profº Carlos D. Maciel and
+#         Profª Patricia A. A. Marques
 # Date: July 10, 2025
 # Output: study_area_map.png
 
@@ -18,36 +20,57 @@ import re
 import seaborn as sns
 import math
 import matplotlib.patheffects as PathEffects
+from pathlib import Path
+import sys
 
 
 # --- 0. FILE PATHS AND CONFIGURATION ---
 # Defines paths for data files and the output map.
-META_CSV_PATH = "./EVAonline_validation_v1.0.0/data/map_data/cities_plot.csv"
-BRASIL_GEOJSON_PATH = (
-    "./EVAonline_validation_v1.0.0/data/map_data/BR_UF_2024.geojson"
-)
-MATOPIBA_GEOJSON_PATH = (
-    "./EVAonline_validation_v1.0.0/data/map_data/Matopiba_Perimetro.geojson"
-)
-CLIMATE_SHAPEFILE_PATH = "./EVAonline_validation_v1.0.0/data/map_data/shapefile_climate/clima_5000.shp"
-CLIMATE_COLUMN_NAME = (
-    "DESC_COMPL"  # Column in the shapefile with climate descriptions
-)
-OUTPUT_MAP_PATH = "./EVAonline_validation_v1.0.0/figures/study_area_map.png"  # Output map file
+SCRIPT_DIR = Path(__file__).parent
+BASE_DIR = SCRIPT_DIR.parent
+DATA_DIR = BASE_DIR / "data" / "original_data" / "map_data"
+FIGURES_DIR = BASE_DIR / "data" / "1_figures"
+
+META_CSV_PATH = DATA_DIR / "cities_plot.csv"
+BRASIL_GEOJSON_PATH = DATA_DIR / "BR_UF_2024.geojson"
+MATOPIBA_GEOJSON_PATH = DATA_DIR / "Matopiba_Perimetro.geojson"
+CLIMATE_SHAPEFILE_PATH = DATA_DIR / "shapefile_climate" / "clima_5000.shp"
+CLIMATE_COLUMN_NAME = "DESC_COMPL"  # Column with climate descriptions
+OUTPUT_MAP_PATH = FIGURES_DIR / "study_area_map.png"
 # --- END OF CONFIGURATION ---
 
 print("Starting the generation of the adjusted map with selected stations...")
 
+# Validate required files exist
+required_files = [
+    META_CSV_PATH,
+    BRASIL_GEOJSON_PATH,
+    MATOPIBA_GEOJSON_PATH,
+    CLIMATE_SHAPEFILE_PATH,
+]
+
+for file_path in required_files:
+    if not file_path.exists():
+        print(f"ERROR: File not found: {file_path}")
+        print("   Please ensure you're running this script from the ")
+        print("   EVAonline_validation_v1.0.0/scripts/ directory.")
+        sys.exit(1)
+
+# Create output directory if it doesn't exist
+FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+print(f"All required files found. Output: {OUTPUT_MAP_PATH}")
+
 
 # --- 1. FUNCTIONS AND COLOR PALETTE ---
 def normalize_text(text):
-    """Normalizes text by removing accents, special characters, and extra spaces.
+    """Normalizes text by removing accents and special characters.
 
     Args:
         text (str): Text to be normalized.
 
     Returns:
-        str: Normalized text in lowercase, without accents or special characters.
+        str: Normalized text in lowercase, without accents or
+             special characters.
     """
     if not isinstance(text, str):
         return ""
@@ -68,62 +91,217 @@ def normalize_text(text):
 
 # Defines a color mapping for climate zones based on their descriptions.
 color_map = {
-    "Equatorial, quente - média > 18° C em todos os meses, super-úmido sem seca": "#6A339A",
-    "Equatorial, quente - média > 18° C em todos os meses, super-úmido subseca": "#A378B9",
-    "Equatorial, quente - média > 18° C em todos os meses, úmido 1 a 2 meses secos": "#D1AAD1",
-    "Equatorial, quente - média > 18° C em todos os meses, úmido 3 meses secos": "#E6D4E6",
-    "Equatorial, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, super-úmido subseca": "#00A651",
-    "Equatorial, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, úmido 1 a 2 meses secos": "#8BC53F",
-    "Equatorial, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, úmido 3 meses secos": "#B5D69C",
+    (
+        "Equatorial, quente - média > 18° C em todos os meses, "
+        "super-úmido sem seca"
+    ): "#6A339A",
+    (
+        "Equatorial, quente - média > 18° C em todos os meses, "
+        "super-úmido subseca"
+    ): "#A378B9",
+    (
+        "Equatorial, quente - média > 18° C em todos os meses, "
+        "úmido 1 a 2 meses secos"
+    ): "#D1AAD1",
+    (
+        "Equatorial, quente - média > 18° C em todos os meses, "
+        "úmido 3 meses secos"
+    ): "#E6D4E6",
+    (
+        "Equatorial, subquente - média entre 15 e 18 ° C em "
+        "pelo menos 1 mês, super-úmido subseca"
+    ): "#00A651",
+    (
+        "Equatorial, subquente - média entre 15 e 18 ° C em "
+        "pelo menos 1 mês, úmido 1 a 2 meses secos"
+    ): "#8BC53F",
+    (
+        "Equatorial, subquente - média entre 15 e 18 ° C em "
+        "pelo menos 1 mês, úmido 3 meses secos"
+    ): "#B5D69C",
     "Massa d'água": "#aadaff",
-    "Temperado, mesotérmico brando - média entre 10 e 15° C, super-úmido sem seca": "#00AEEF",
-    "Temperado, mesotérmico brando - média entre 10 e 15° C, super-úmido subseca": "#66C5EE",
-    "Temperado, mesotérmico mediano - média > 10° C, super-úmido subseca": "#B3B3B3",
-    "Temperado, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, super-úmido sem seca": "#00843D",
-    "Temperado, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, super-úmido subseca": "#00A651",
-    "Tropical Brasil Central, mesotérmico brando - média entre 10 e 15° C, semi-úmido 4 a 5 meses": "#E6F5FB",
-    "Tropical Brasil Central, mesotérmico brando - média entre 10 e 15° C, super-úmido sem seca": "#00AEEF",
-    "Tropical Brasil Central, mesotérmico brando - média entre 10 e 15° C, super-úmido subseca": "#66C5EE",
-    "Tropical Brasil Central, mesotérmico brando - média entre 10 e 15° C, úmido 1 a 2 meses secos": "#99D9F2",
-    "Tropical Brasil Central, mesotérmico brando - média entre 10 e 15° C, úmido 3 meses secos": "#CCEBF7",
-    "Tropical Brasil Central, mesotérmico mediano - média > 10° C, super-úmido sem seca": "#808080",
-    "Tropical Brasil Central, mesotérmico mediano - média > 10° C, úmido 1 a 2 meses secos": "#D9D9D9",
-    "Tropical Brasil Central, quente - média > 18° C em todos os meses, semi-árido 6 meses secos": "#FFFFBE",
-    "Tropical Brasil Central, quente - média > 18° C em todos os meses, semi-árido 7 a 8 meses secos": "#FFFF00",
-    "Tropical Brasil Central, quente - média > 18° C em todos os meses, semi-árido 9 a 10 meses secos": "#F7941D",
-    "Tropical Brasil Central, quente - média > 18° C em todos os meses, semi-úmido 4 a 5 meses secos": "#F2EFF2",
-    "Tropical Brasil Central, quente - média > 18° C em todos os meses, super-úmido sem seca": "#6A339A",
-    "Tropical Brasil Central, quente - média > 18° C em todos os meses, super-úmido subseca": "#A378B9",
-    "Tropical Brasil Central, quente - média > 18° C em todos os meses, úmido 1 a 2 meses secos": "#D1AAD1",
-    "Tropical Brasil Central, quente - média > 18° C em todos os meses, úmido 3 meses secos": "#E6D4E6",
-    "Tropical Brasil Central, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, semi-árido 6 meses secos": "#EFF6E9",
-    "Tropical Brasil Central, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, semi-úmido 4 a 5 meses secos": "#D9EAD3",
-    "Tropical Brasil Central, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, úmido 1 a 2 meses secos": "#8BC53F",
-    "Tropical Brasil Central, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, úmido 3 meses secos": "#B5D69C",
-    "Tropical Brasil Central, subquente - média entre 15 e 18º C em pelo menos 1 mês, super-úmido sem seca": "#00843D",
-    "Tropical Brasil Central, subquente - média entre 15 e 18º C em pelo menos 1 mês, super-úmido subseca": "#00A651",
-    "Tropical Nordeste Oriental, quente - média > 18 ° C em todos os meses, semi-úmido 4 a 5 meses secos": "#F2EFF2",
-    "Tropical Nordeste Oriental, quente - média > 18° C em todos os meses, semi-árido 6 meses secos": "#FFFFBE",
-    "Tropical Nordeste Oriental, quente - média > 18° C em todos os meses, semi-árido 7 a 8 meses secos": "#FFFF00",
-    "Tropical Nordeste Oriental, quente - média > 18° C em todos os meses, semi-árido 9 a 10 meses secos": "#F7941D",
-    "Tropical Nordeste Oriental, quente - média > 18° C em todos os meses, super-úmido sem seca": "#6A339A",
-    "Tropical Nordeste Oriental, quente - média > 18° C em todos os meses, super-úmido subseca": "#A378B9",
-    "Tropical Nordeste Oriental, quente - média > 18º C em todos os meses, úmido 1 a 2 meses secos": "#D1AAD1",
-    "Tropical Nordeste Oriental, quente - média > 18º C em todos os meses, úmido 3 meses secos": "#E6D4E6",
-    "Tropical Nordeste Oriental, subquente - média entre 15 e 18 ° C em pelo menos 1 mês, semi-úmido 4 a 5 meses secos": "#D9EAD3",
-    "Tropical Nordeste Oriental, subquente - média entre 15 e 18º C em pelo menos 1 mês, úmido 3 meses secos": "#B5D69C",
-    "Tropical Zona Equatorial, quente - média > 18° C em todos os meses, semi-árido 11 meses secos": "#ED1C24",
-    "Tropical Zona Equatorial, quente - média > 18° C em todos os meses, semi-árido 6 meses secos": "#FFFFBE",
-    "Tropical Zona Equatorial, quente - média > 18° C em todos os meses, semi-árido 7 a 8 meses secos": "#FFFF00",
-    "Tropical Zona Equatorial, quente - média > 18° C em todos os meses, semi-árido 9 a 10 meses secos": "#F7941D",
-    "Tropical Zona Equatorial, quente - média > 18° C em todos os meses, semi-úmido 4 a 5 meses secos": "#F2EFF2",
-    "Tropical Zona Equatorial, quente - média > 18° C em todos os meses, super-úmido subseca": "#A378B9",
-    "Tropical Zona Equatorial, quente - média > 18° C em todos os meses, úmido 1 a 2 meses secos": "#D1AAD1",
-    "Tropical Zona Equatorial, quente - média > 18° C em todos os meses, úmido 3 meses secos": "#E6D4E6",
+    (
+        "Temperado, mesotérmico brando - média entre 10 e 15° C, "
+        "super-úmido sem seca"
+    ): "#00AEEF",
+    (
+        "Temperado, mesotérmico brando - média entre 10 e 15° C, "
+        "super-úmido subseca"
+    ): "#66C5EE",
+    (
+        "Temperado, mesotérmico mediano - média > 10° C, "
+        "super-úmido subseca"
+    ): "#B3B3B3",
+    (
+        "Temperado, subquente - média entre 15 e 18 ° C em "
+        "pelo menos 1 mês, super-úmido sem seca"
+    ): "#00843D",
+    (
+        "Temperado, subquente - média entre 15 e 18 ° C em "
+        "pelo menos 1 mês, super-úmido subseca"
+    ): "#00A651",
+    (
+        "Tropical Brasil Central, mesotérmico brando - "
+        "média entre 10 e 15° C, semi-úmido 4 a 5 meses"
+    ): "#E6F5FB",
+    (
+        "Tropical Brasil Central, mesotérmico brando - "
+        "média entre 10 e 15° C, super-úmido sem seca"
+    ): "#00AEEF",
+    (
+        "Tropical Brasil Central, mesotérmico brando - "
+        "média entre 10 e 15° C, super-úmido subseca"
+    ): "#66C5EE",
+    (
+        "Tropical Brasil Central, mesotérmico brando - "
+        "média entre 10 e 15° C, úmido 1 a 2 meses secos"
+    ): "#99D9F2",
+    (
+        "Tropical Brasil Central, mesotérmico brando - "
+        "média entre 10 e 15° C, úmido 3 meses secos"
+    ): "#CCEBF7",
+    (
+        "Tropical Brasil Central, mesotérmico mediano - "
+        "média > 10° C, super-úmido sem seca"
+    ): "#808080",
+    (
+        "Tropical Brasil Central, mesotérmico mediano - "
+        "média > 10° C, úmido 1 a 2 meses secos"
+    ): "#D9D9D9",
+    (
+        "Tropical Brasil Central, quente - média > 18° C em "
+        "todos os meses, semi-árido 6 meses secos"
+    ): "#FFFFBE",
+    (
+        "Tropical Brasil Central, quente - média > 18° C em "
+        "todos os meses, semi-árido 7 a 8 meses secos"
+    ): "#FFFF00",
+    (
+        "Tropical Brasil Central, quente - média > 18° C em "
+        "todos os meses, semi-árido 9 a 10 meses secos"
+    ): "#F7941D",
+    (
+        "Tropical Brasil Central, quente - média > 18° C em "
+        "todos os meses, semi-úmido 4 a 5 meses secos"
+    ): "#F2EFF2",
+    (
+        "Tropical Brasil Central, quente - média > 18° C em "
+        "todos os meses, super-úmido sem seca"
+    ): "#6A339A",
+    (
+        "Tropical Brasil Central, quente - média > 18° C em "
+        "todos os meses, super-úmido subseca"
+    ): "#A378B9",
+    (
+        "Tropical Brasil Central, quente - média > 18° C em "
+        "todos os meses, úmido 1 a 2 meses secos"
+    ): "#D1AAD1",
+    (
+        "Tropical Brasil Central, quente - média > 18° C em "
+        "todos os meses, úmido 3 meses secos"
+    ): "#E6D4E6",
+    (
+        "Tropical Brasil Central, subquente - média entre 15 e 18 ° C "
+        "em pelo menos 1 mês, semi-árido 6 meses secos"
+    ): "#EFF6E9",
+    (
+        "Tropical Brasil Central, subquente - média entre 15 e 18 ° C "
+        "em pelo menos 1 mês, semi-úmido 4 a 5 meses secos"
+    ): "#D9EAD3",
+    (
+        "Tropical Brasil Central, subquente - média entre 15 e 18 ° C "
+        "em pelo menos 1 mês, úmido 1 a 2 meses secos"
+    ): "#8BC53F",
+    (
+        "Tropical Brasil Central, subquente - média entre 15 e 18 ° C "
+        "em pelo menos 1 mês, úmido 3 meses secos"
+    ): "#B5D69C",
+    (
+        "Tropical Brasil Central, subquente - média entre 15 e 18º C "
+        "em pelo menos 1 mês, super-úmido sem seca"
+    ): "#00843D",
+    (
+        "Tropical Brasil Central, subquente - média entre 15 e 18º C "
+        "em pelo menos 1 mês, super-úmido subseca"
+    ): "#00A651",
+    (
+        "Tropical Nordeste Oriental, quente - média > 18 ° C em "
+        "todos os meses, semi-úmido 4 a 5 meses secos"
+    ): "#F2EFF2",
+    (
+        "Tropical Nordeste Oriental, quente - média > 18° C em "
+        "todos os meses, semi-árido 6 meses secos"
+    ): "#FFFFBE",
+    (
+        "Tropical Nordeste Oriental, quente - média > 18° C em "
+        "todos os meses, semi-árido 7 a 8 meses secos"
+    ): "#FFFF00",
+    (
+        "Tropical Nordeste Oriental, quente - média > 18° C em "
+        "todos os meses, semi-árido 9 a 10 meses secos"
+    ): "#F7941D",
+    (
+        "Tropical Nordeste Oriental, quente - média > 18° C em "
+        "todos os meses, super-úmido sem seca"
+    ): "#6A339A",
+    (
+        "Tropical Nordeste Oriental, quente - média > 18° C em "
+        "todos os meses, super-úmido subseca"
+    ): "#A378B9",
+    (
+        "Tropical Nordeste Oriental, quente - média > 18º C em "
+        "todos os meses, úmido 1 a 2 meses secos"
+    ): "#D1AAD1",
+    (
+        "Tropical Nordeste Oriental, quente - média > 18º C em "
+        "todos os meses, úmido 3 meses secos"
+    ): "#E6D4E6",
+    (
+        "Tropical Nordeste Oriental, subquente - média entre 15 e 18 ° C "
+        "em pelo menos 1 mês, semi-úmido 4 a 5 meses secos"
+    ): "#D9EAD3",
+    (
+        "Tropical Nordeste Oriental, subquente - média entre 15 e 18º C "
+        "em pelo menos 1 mês, úmido 3 meses secos"
+    ): "#B5D69C",
+    (
+        "Tropical Zona Equatorial, quente - média > 18° C em "
+        "todos os meses, semi-árido 11 meses secos"
+    ): "#ED1C24",
+    (
+        "Tropical Zona Equatorial, quente - média > 18° C em "
+        "todos os meses, semi-árido 6 meses secos"
+    ): "#FFFFBE",
+    (
+        "Tropical Zona Equatorial, quente - média > 18° C em "
+        "todos os meses, semi-árido 7 a 8 meses secos"
+    ): "#FFFF00",
+    (
+        "Tropical Zona Equatorial, quente - média > 18° C em "
+        "todos os meses, semi-árido 9 a 10 meses secos"
+    ): "#F7941D",
+    (
+        "Tropical Zona Equatorial, quente - média > 18° C em "
+        "todos os meses, semi-úmido 4 a 5 meses secos"
+    ): "#F2EFF2",
+    (
+        "Tropical Zona Equatorial, quente - média > 18° C em "
+        "todos os meses, super-úmido subseca"
+    ): "#A378B9",
+    (
+        "Tropical Zona Equatorial, quente - média > 18° C em "
+        "todos os meses, úmido 1 a 2 meses secos"
+    ): "#D1AAD1",
+    (
+        "Tropical Zona Equatorial, quente - média > 18° C em "
+        "todos os meses, úmido 3 meses secos"
+    ): "#E6D4E6",
     "Zona Contígua": "#ADD8E6",
     "Zona Costeira": "#ADD8E6",
     "Zona Exclusiva": "#ADD8E6",
 }
+
+# Normalize color map keys for matching
 normalized_color_map = {normalize_text(k): v for k, v in color_map.items()}
 
 
@@ -134,7 +312,8 @@ def get_color(desc):
         desc (str): Climate description from the shapefile.
 
     Returns:
-        str: Hexadecimal color code corresponding to the description or default gray (#E0E0E0) if not found.
+        str: Hexadecimal color code corresponding to the description
+             or default gray (#E0E0E0) if not found.
     """
     if pd.isna(desc):
         return "#808080"
@@ -166,7 +345,10 @@ def blank_axes(ax):
 
 
 def displace(lat, lon, az, dist_m):
-    """Calculates final coordinates (latitude, longitude) from an initial point, azimuth, and distance.
+    """Calculates final coordinates from initial point.
+
+    Computes final latitude and longitude given an initial point,
+    azimuth, and distance.
 
     Args:
         lat (float): Initial latitude in degrees.
@@ -211,17 +393,16 @@ def add_scalebar(
     Args:
         ax (cartopy.mpl.geoaxes.GeoAxes): Map axis.
         metric_distance (float): Total length of the bar in meters.
-        bar_offset (tuple): (x_offset, y_offset, text_offset) as a fraction of the axis.
+        bar_offset (tuple): (x_offset, y_offset, text_offset)
+                           as a fraction of the axis.
         max_stripes (int): Number of segments in the bar.
         bar_alpha (float): Transparency of the bar.
         fontsize (int): Font size of the scale text.
         linewidth (float): Line width of the bar.
-
-    Note: The linewidth=20 for the MATOPIBA scale bar does not render as expected,
-          possibly due to rendering limitations in Cartopy/Matplotlib.
     """
     print(
-        f"Adding scale bar to axis {ax.get_title()} with total length of {metric_distance / 1000} km and linewidth={linewidth}"
+        f"Adding scale bar to axis {ax.get_title()} with total length "
+        f"of {metric_distance / 1000} km and linewidth={linewidth}"
     )
     lon0, lon1, lat0, lat1 = ax.get_extent(crs=ccrs.PlateCarree())
     bar_lon0 = lon0 + (lon1 - lon0) * bar_offset[0]
@@ -236,7 +417,9 @@ def add_scalebar(
     for i in range(bar_ticks):
         end_lat, end_lon = displace(bar_lat0, bar_lon0, 90, bar_tickmark)
         print(
-            f"Drawing scale bar segment {i+1} with linewidth={linewidth}, from ({bar_lon0:.4f}, {bar_lat0:.4f}) to ({end_lon:.4f}, {end_lat:.4f})"
+            f"Drawing scale bar segment {i + 1} with linewidth={linewidth}, "
+            f"from ({bar_lon0:.4f}, {bar_lat0:.4f}) to "
+            f"({end_lon:.4f}, {end_lat:.4f})"
         )
         ax.plot(
             [bar_lon0, end_lon],
@@ -264,7 +447,8 @@ def add_scalebar(
         fontsize=fontsize,
     )
     print(
-        f"Scale bar drawn: {total_distance_km} km with {max_stripes} segments of {bar_tickmark / 1000} km each"
+        f"Scale bar drawn: {total_distance_km} km with {max_stripes} "
+        f"segments of {bar_tickmark / 1000} km each"
     )
 
 
@@ -278,30 +462,28 @@ PROJECTION = ccrs.PlateCarree()
 
 try:
     # Loads geospatial data and converts to the EPSG:4326 coordinate system.
-    print("Carregando GeoJSON do Brasil...")
+    print("Loading Brazil GeoJSON...")
     gdf_brasil = gpd.read_file(BRASIL_GEOJSON_PATH).to_crs(
         epsg=4326
     )  # Brazil's state boundaries
-    print("GeoJSON do Brasil carregado com sucesso.")
+    print("Brazil GeoJSON loaded successfully.")
 
-    print("Carregando GeoJSON do MATOPIBA...")
+    print("Loading MATOPIBA GeoJSON...")
     gdf_matopiba = gpd.read_file(MATOPIBA_GEOJSON_PATH).to_crs(
         epsg=4326
     )  # MATOPIBA perimeter
-    print("GeoJSON do MATOPIBA carregado com sucesso.")
+    print("MATOPIBA GeoJSON loaded successfully.")
 
-    print("Carregando shapefile de clima...")
+    print("Loading climate shapefile...")
     gdf_clima = gpd.read_file(CLIMATE_SHAPEFILE_PATH)  # Climate zones
-    print("Shapefile de clima carregado com sucesso.")
+    print("Climate shapefile loaded successfully.")
     if gdf_clima.crs is None:
         gdf_clima.set_crs(epsg=4674, inplace=True)  # Sets CRS if not specified
     gdf_clima = gdf_clima.to_crs(epsg=4326)
 
-    print("Carregando CSV de estações...")
-    meta_df = pd.read_csv(
-        META_CSV_PATH, sep=";", encoding="utf-8"
-    )  # Explicitly set UTF-8
-    print("CSV de estações carregado com sucesso.")
+    print("Loading stations CSV...")
+    meta_df = pd.read_csv(META_CSV_PATH, sep=";")
+    print("Stations CSV loaded successfully.")
 
     meta_df["CODE_ST"] = meta_df["CODE_ST"].astype(
         str
@@ -322,14 +504,26 @@ try:
         crs="EPSG:4326",
     )
     print(
-        f"Dados carregados e processados. Total de estações com PLOT=YES: {len(gdf_stations)}"
+        f"Data loaded and processed. "
+        f"Total stations with PLOT=YES: {len(gdf_stations)}"
     )
+except FileNotFoundError as e:
+    print(f"ERROR: File not found: {e}")
+    sys.exit(1)
+except ValueError as e:
+    print(f"ERROR processing data: {e}")
+    print("   Check the format of CSV/GeoJSON files.")
+    sys.exit(1)
 except Exception as e:
-    print(f"ERRO ao carregar ou processar arquivos. Detalhes: {e}")
-    exit()
+    print(f"UNEXPECTED ERROR loading files: {e}")
+    import traceback
+
+    traceback.print_exc()
+    sys.exit(1)
 
 # --- 3. FIGURE SETUP WITH ADVANCED LAYOUT (GRIDSPEC) ---
-# Creates a figure with size 36x32 inches and DPI 100 (reduced for rendering tests).
+# Creates a figure with size 36x32 inches and DPI 100
+# (reduced for rendering tests).
 fig = plt.figure(figsize=(36, 32), dpi=100)
 # Defines a layout with two rows: maps in the first, legend in the second.
 gs_main_layout = GridSpec(2, 1, figure=fig, height_ratios=[10, 1], hspace=0.50)
@@ -426,7 +620,8 @@ gl.xlabel_style = {"size": 28, "color": "black"}
 gl.ylabel_style = {"size": 28, "color": "black"}
 
 # --- 5. RIGHT PANEL: MAIN MAP (MATOPIBA REGION) ---
-# Configures the MATOPIBA map with climate zones, meteorological stations, and legend.
+# Configures the MATOPIBA map with climate zones,
+# meteorological stations, and legend.
 ax_main.set_title("MATOPIBA Region", fontsize=42, fontweight="bold")
 # Sets the black border of the MATOPIBA map square.
 for spine in ax_main.spines.values():
@@ -479,7 +674,7 @@ sns.scatterplot(
 )
 
 # Adds numbers on stations with white outline for readability.
-for idx, row in gdf_stations.iterrows():
+for _, row in gdf_stations.iterrows():
     ax_main.text(
         row.geometry.x,
         row.geometry.y + 0.08,  # Vertical offset
@@ -636,8 +831,8 @@ add_scalebar(
     max_stripes=5,
     bar_alpha=0.3,
     fontsize=30,
-    linewidth=20,
-)  # Note: linewidth=20 did not work as expected
+    linewidth=15,  # Increased for better visibility
+)
 print("Adding scale bar to Brazil...")
 add_scalebar(
     ax_context,
@@ -787,31 +982,36 @@ ax_leg3.axis("off")
 zonas_handles = [
     mpatches.Patch(
         color=get_color(
-            "Equatorial, quente - média > 18° C em todos os meses, super-úmido sem seca"
+            "Equatorial, quente - média > 18° C em todos os meses, "
+            "super-úmido sem seca"
         ),
         label="Equatorial",
     ),
     mpatches.Patch(
         color=get_color(
-            "Temperado, mesotérmico brando - média entre 10 e 15° C, super-úmido sem seca"
+            "Temperado, mesotérmico brando - média entre 10 e 15° C, "
+            "super-úmido sem seca"
         ),
         label="Temperate",
     ),
     mpatches.Patch(
         color=get_color(
-            "Tropical Brasil Central, quente - média > 18° C em todos os meses, semi-árido 7 a 8 meses secos"
+            "Tropical Brasil Central, quente - média > 18° C em "
+            "todos os meses, semi-árido 7 a 8 meses secos"
         ),
         label="Tropical Central Brazil",
     ),
     mpatches.Patch(
         color=get_color(
-            "Tropical Nordeste Oriental, quente - média > 18° C em todos os meses, semi-árido 9 a 10 meses secos"
+            "Tropical Nordeste Oriental, quente - média > 18° C em "
+            "todos os meses, semi-árido 9 a 10 meses secos"
         ),
         label="Tropical Northeastern Brazil",
     ),
     mpatches.Patch(
         color=get_color(
-            "Tropical Zona Equatorial, quente - média > 18° C em todos os meses, semi-árido 11 meses secos"
+            "Tropical Zona Equatorial, quente - média > 18° C em "
+            "todos os meses, semi-árido 11 meses secos"
         ),
         label="Tropical Equatorial Zone",
     ),

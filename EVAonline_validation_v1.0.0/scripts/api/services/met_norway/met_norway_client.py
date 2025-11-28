@@ -38,11 +38,11 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 # Import para detecção regional (fonte única)
-from validation_logic_eto.api.services.geographic_utils import (
+from scripts.api.services.geographic_utils import (
     GeographicUtils,
     validate_coordinates,
 )
-from validation_logic_eto.api.services.weather_utils import (
+from scripts.api.services.weather_utils import (
     METNorwayAggregationUtils,  # Movido de aqui para weather_utils
     WeatherConversionUtils,
     CacheUtils,  # Utilitários de cache
@@ -109,7 +109,7 @@ class METNorwayConfig(BaseModel):
 
     # User-Agent required (MET Norway requires identification)
     user_agent: str = Field(
-        default="EVAonline/1.0 (https://github.com/angelasmcsores/EVAONLINE)",
+        default="EVAonline/1.0 (https://github.com/silvianesoares/EVAONLINE)",
         description="User-Agent header (required by MET Norway)",
     )
 

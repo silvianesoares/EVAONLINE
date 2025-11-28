@@ -1329,16 +1329,16 @@ class ElevationUtils:
             - eto_impact_pct: Impacto estimado no ETo (%)
 
         Exemplo:
-            >>> # OpenTopoData (preciso)
-            >>> precise = 1172.0
-            >>> # Open-Meteo (aproximado)
-            >>> approx = 1150.0
-            >>>
-            >>> impact = ElevationUtils.compare_elevation_impact(
-            ...     precise, approx
-            ... )
-            >>> print(f"Diferença elevação: {impact['elevation_diff_m']:.1f}m")
-            >>> print(f"Impacto no ETo: {impact['eto_impact_pct']:.3f}%")
+            > # OpenTopoData (preciso)
+            > precise = 1172.0
+            > # Open-Meteo (aproximado)
+            > approx = 1150.0
+
+            > impact = ElevationUtils.compare_elevation_impact(
+                precise, approx
+            )
+            > print(f"Diferença elevação: {impact['elevation_diff_m']:.1f}m")
+            > print(f"Impacto no ETo: {impact['eto_impact_pct']:.3f}%")
             Diferença elevação: 22.0m
             Impacto no ETo: 0.245%
 

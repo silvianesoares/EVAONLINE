@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Union
 import pandas as pd
 from loguru import logger
 
-from validation_logic_eto.api.services.openmeteo_forecast.openmeteo_forecast_client import (
+from scripts.api.services.openmeteo_forecast.openmeteo_forecast_client import (
     OpenMeteoForecastClient,
 )
 
@@ -214,7 +214,7 @@ class OpenMeteoForecastSyncAdapter:
         start_date = datetime.now()
         end_date = start_date + timedelta(days=days - 1)
 
-        return self.get_data_sync(lat, lon, start_date, end_date)
+        return self.get_daily_data_sync(lat, lon, start_date, end_date)
 
     def health_check_sync(self) -> bool:
         """

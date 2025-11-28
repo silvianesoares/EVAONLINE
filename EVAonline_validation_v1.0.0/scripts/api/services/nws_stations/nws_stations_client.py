@@ -72,10 +72,7 @@ class NWSStationsConfig(BaseModel):
     retry_delay: float = 1.0
     user_agent: str = os.getenv(
         "NWS_USER_AGENT",
-        (
-            "EVAonline/1.0 "
-            "(https://github.com/angelacunhasoares/EVAonline_SoftwareX)"
-        ),
+        ("EVAonline/1.0 " "(https://github.com/silvianesoares/EVAONLINE)"),
     )
     max_stations: int = 10  # Máximo de estações para buscar
     observation_delay_threshold: int = 20  # minutos

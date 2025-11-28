@@ -2,7 +2,8 @@
 """
 Generate Descriptive Statistics for EVAonline Validation Dataset
 
-This script calculates comprehensive descriptive statistics for all data sources:
+This script calculates comprehensive descriptive statistics for all
+data sources:
 - Xavier (reference dataset)
 - NASA POWER (MERRA-2 reanalysis)
 - Open-Meteo (ERA5-Land reanalysis)
@@ -18,7 +19,7 @@ Usage:
 import sys
 import pandas as pd
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 from loguru import logger
 from datetime import datetime
 
@@ -29,6 +30,48 @@ logger.add(
     colorize=True,
     format="<green>{time:HH:mm:ss}</green> | {message}",
 )
+
+
+def convert_wind_speed_2m(
+    u_height: pd.Series, height: float = 10.0
+) -> pd.Series:
+    """
+    Eq. 47 - FAO-56 logarithmic wind speed conversion to 2m height.
+
+    Converts wind speed measurements from any height to the standard
+    2m reference height using the logarithmic wind profile equation.
+    This is the exact formula from FAO-56 Equation 47, ensuring
+    consistency with ETo calculations.
+
+    Formula: u2 = uz * [4.87 / ln(67.8*z - 5.42)]
+
+    Args:
+        u_height: Wind speed at measurement height (m/s)
+        height: Measurement height (m) - default 10m for Open-Meteo
+                NASA POWER data is already at 2m, so height=2.0
+
+    Returns:
+        Wind speed at 2m height (m/s), with minimum value of 0.5 m/s
+
+    Reference:
+        Allen, R. G., Pereira, L. S., Raes, D., & Smith, M. (1998).
+        Crop evapotranspiration - Guidelines for computing crop water
+        requirements. FAO Irrigation and drainage paper 56, Eq. 47.
+
+    Example:
+        > ws_2m = convert_wind_speed_2m(ws_10m, height=10.0)
+        # Converts from 10m to 2m using logarithmic profile
+    """
+    if height == 2.0:
+        # Already at 2m height (NASA POWER case)
+        return u_height.clip(lower=0.5)
+
+    # FAO-56 Eq. 47: u2 = uz * [4.87 / ln(67.8*z - 5.42)]
+    import numpy as np
+
+    conversion_factor = 4.87 / np.log(67.8 * height - 5.42)
+    u2 = u_height * conversion_factor
+    return u2.clip(lower=0.5)  # Physical minimum limit
 
 
 def get_xavier_limits() -> Dict:
@@ -93,7 +136,9 @@ def detect_outliers_xavier_limits(
     return df
 
 
-def calculate_statistics(data: pd.Series, variable_name: str = None) -> Dict:
+def calculate_statistics(
+    data: pd.Series, variable_name: Optional[str] = None
+) -> Dict:
     """
     Calculate comprehensive descriptive statistics.
 
@@ -179,7 +224,9 @@ def analyze_nasa_power_data(data_dir: Path) -> pd.DataFrame:
     ]
 
     for file_path in nasa_dir.glob("*.csv"):
-        # Extract city_state from filename (e.g., "Alvorada_do_Gurgueia_PI" from "Alvorada_do_Gurgueia_PI_1991-01-01_2020-12-31_NASA_RAW.csv")
+        # Extract city_state from filename
+        # e.g., "Alvorada_do_Gurgueia_PI" from
+        # "Alvorada_do_Gurgueia_PI_1991-01-01_2020-12-31_NASA_RAW.csv"
         parts = file_path.stem.split("_")
         # Find where the date starts (format: YYYY-MM-DD)
         city_parts = []
@@ -219,13 +266,14 @@ def analyze_openmeteo_data(data_dir: Path) -> pd.DataFrame:
     openmeteo_dir = data_dir / "open_meteo_raw"
     all_stats = []
 
-    # Variables in Open-Meteo (now same as NASA POWER)
+    # Variables in Open-Meteo
+    # Note: Open-Meteo provides WS10M, which needs conversion to WS2M
     variables = [
         "T2M_MAX",
         "T2M_MIN",
         "T2M",
         "RH2M",
-        "WS10M",
+        "WS10M",  # Wind at 10m (will be converted to WS2M)
         "ALLSKY_SFC_SW_DWN",
         "PRECTOTCORR",
     ]
@@ -245,20 +293,47 @@ def analyze_openmeteo_data(data_dir: Path) -> pd.DataFrame:
         df = pd.read_csv(file_path)
         df["date"] = pd.to_datetime(df["date"])
 
-        for var in variables:
-            if var in df.columns:
-                stats = calculate_statistics(df[var], variable_name=var)
-                stats["source"] = "Open-Meteo"
-                stats["city"] = city
-                stats["variable"] = var
-                stats["period_start"] = df["date"].min().strftime("%Y-%m-%d")
-                stats["period_end"] = df["date"].max().strftime("%Y-%m-%d")
-                stats["n_days"] = len(df)
+        # Convert WS10M to WS2M using FAO-56 Eq. 47 (logarithmic profile)
+        # This ensures consistency with ETo calculation methodology
+        if "WS10M" in df.columns:
+            logger.debug(
+                f"Converting WS10M to WS2M for {city} "
+                f"(FAO-56 Eq. 47: logarithmic profile)"
+            )
+            df["WS2M"] = convert_wind_speed_2m(df["WS10M"], height=10.0)
 
-                all_stats.append(stats)
+        for var in variables:
+            # Map WS10M to WS2M for statistics
+            if var == "WS10M":
+                if "WS2M" not in df.columns:
+                    logger.warning(
+                        f"WS10M found but WS2M conversion failed for {city}"
+                    )
+                    continue
+                # Use converted WS2M data but report as WS2M
+                var_data = df["WS2M"]
+                var_name = "WS2M"  # Report as WS2M (converted)
+                var_limits = "WS2M"  # Use WS2M limits for validation
+            elif var in df.columns:
+                var_data = df[var]
+                var_name = var
+                var_limits = var
+            else:
+                continue
+
+            stats = calculate_statistics(var_data, variable_name=var_limits)
+            stats["source"] = "Open-Meteo"
+            stats["city"] = city
+            stats["variable"] = var_name  # Report as WS2M if converted
+            stats["period_start"] = df["date"].min().strftime("%Y-%m-%d")
+            stats["period_end"] = df["date"].max().strftime("%Y-%m-%d")
+            stats["n_days"] = len(df)
+
+            all_stats.append(stats)
 
     logger.info(
-        f"Processed {len(all_stats)} variable-city combinations from Open-Meteo"
+        f"Processed {len(all_stats)} variable-city combinations "
+        f"from Open-Meteo"
     )
     return pd.DataFrame(all_stats)
 
@@ -359,11 +434,11 @@ def generate_text_report(df_all: pd.DataFrame, output_dir: Path):
             total_obs = df_source["count"].sum()
 
             f.write(f"{source}:\n")
-            f.write(f"  Cities: {n_cities}\n")
-            f.write(f"  Variables: {n_vars}\n")
-            f.write(f"  Total observations: {total_obs:,}\n")
+            f.write(f"Cities: {n_cities}\n")
+            f.write(f"Variables: {n_vars}\n")
+            f.write(f"Total observations: {total_obs:,}\n")
             f.write(
-                f"  Missing data: {df_source['missing_pct'].mean():.2f}%\n\n"
+                f"Missing data: {df_source['missing_pct'].mean():.2f}%\n\n"
             )
 
         # 2. ETo Statistics by Source
@@ -451,9 +526,8 @@ def generate_text_report(df_all: pd.DataFrame, output_dir: Path):
             df_source = df_all[df_all["source"] == source]
 
             f.write(f"{source}:\n")
-            f.write(
-                f"  Complete data: {100 - df_source['missing_pct'].mean():.2f}%\n"
-            )
+            complete_pct = 100 - df_source["missing_pct"].mean()
+            f.write(f"  Complete data: {complete_pct:.2f}%\n")
             f.write(
                 f"  Missing data: {df_source['missing_pct'].mean():.2f}%\n"
             )
@@ -502,13 +576,30 @@ def main():
     logger.info("=" * 80)
 
     # Set paths
-    script_dir = Path(__file__).parent  # EVAonline_validation_v1.0.0/scripts
-    base_dir = script_dir.parent  # EVAonline_validation_v1.0.0
-    data_dir = (
-        base_dir / "data" / "original_data"
-    )  # EVAonline_validation_v1.0.0/data
-    output_dir = data_dir / "statistics_raw_dataset"
+    script_dir = Path(__file__).parent
+    base_dir = script_dir.parent
+    data_dir = base_dir / "data" / "original_data"
+    output_dir = base_dir / "data" / "2_statistics_raw_dataset"
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Validate required directories exist
+    required_dirs = [
+        data_dir / "eto_xavier_csv",
+        data_dir / "nasa_power_raw",
+        data_dir / "open_meteo_raw",
+    ]
+
+    for dir_path in required_dirs:
+        if not dir_path.exists():
+            logger.error(f"ERROR: Required directory not found: {dir_path}")
+            logger.error(
+                "Please ensure you're running this script from the "
+                "EVAonline_validation_v1.0.0/scripts/ directory."
+            )
+            sys.exit(1)
+
+    logger.info(f"Data directory: {data_dir}")
+    logger.info(f"Output directory: {output_dir}")
 
     # Analyze each data source (raw data - no ETo calculation)
     df_xavier = analyze_xavier_data(data_dir)

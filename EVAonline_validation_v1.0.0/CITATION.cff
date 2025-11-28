@@ -1,11 +1,11 @@
 cff-version: 1.2.0
 message: "If you use this dataset, please cite it as below."
 type: dataset
-title: "EVAonline Validation Dataset: Kalman Fusion System for Reference Evapotranspiration in Brazil (2017-2024)"
+title: "EVAonline Validation Dataset: Kalman Fusion System for Reference Evapotranspiration in Brazil (1991-2020)"
 version: 1.0.0
 date-released: 2025-11-21
-url: "https://github.com/angelasilviane/EVAONLINE"
-repository-code: "https://github.com/angelasilviane/EVAONLINE"
+url: "https://github.com/silvianesoares/EVAONLINE"
+repository-code: "https://github.com/silvianesoares/EVAONLINE"
 license: AGPL-3.0-or-later
 keywords:
   - reference evapotranspiration
@@ -18,58 +18,77 @@ keywords:
   - reanalysis
   - climate data
   - agricultural modeling
+  - ensemble methods
+  - bias correction
+  - NASA POWER
+  - Open-Meteo
+  - Xavier dataset
 authors:
-  - family-names: "Silviane"
-    given-names: "Angela"
-    orcid: "https://orcid.org/0000-0000-0000-0000"
-    affiliation: "Universidade Federal do Tocantins"
+  - family-names: "Soares"
+    given-names: "Ângela Silviane Moura Cunha"
+    orcid: "https://orcid.org/0000-0002-1253-7193"
+    affiliation: "Escola Superior de Agricultura Luiz de Queiroz da Universidade de São Paulo - USP, Brazil"
     email: "angelasilviane@uft.edu.br"
-  # Add more authors here
+  - family-names: "Maciel"
+    given-names: "Carlos Dias"
+    orcid: "https://orcid.org/0000-0003-0137-6678"
+    affiliation: "Universidade Estadual Paulista - Unesp, Brazil"
+  - family-names: "Marques"
+    given-names: "Patricia Angélica Alves"
+    orcid: "https://orcid.org/0000-0002-6818-4833"
+    affiliation: "Escola Superior de Agricultura Luiz de Queiroz da Universidade de São Paulo - USP, Brazil"
 abstract: >-
-  This dataset contains the complete validation results for EVAOnline, 
+  This dataset contains the complete validation results for EVAonline, 
   an open-source Kalman fusion system for reference evapotranspiration (ETo) 
   estimation in Brazil. The dataset includes daily ETo values from four sources:
-  (1) Xavier et al. reference data (1961-2024), (2) NASA POWER reanalysis,
-  (3) Open-Meteo Archive, and (4) EVAOnline Kalman fusion results.
-  Data covers 17 Brazilian cities in the MATOPIBA region (2017-2024),
-  totaling over 186,000 daily observations. EVAOnline demonstrates superior
-  performance with Mean Absolute Error of 0.48 mm/day and near-zero bias (0.6%),
-  compared to NASA POWER (MAE=1.09 mm/day, PBIAS=23.2%) and Open-Meteo
-  (MAE=0.67 mm/day, PBIAS=8.8%). The repository includes raw data, validation
-  scripts, statistical analyses, and reproducible Jupyter notebooks.
+  (1) Xavier et al. BR-DWGD reference data (Brazilian Daily Weather Gridded Data,
+  1961-2024, 0.1° resolution, 3,625+ weather stations), (2) NASA POWER reanalysis
+  (MERRA-2, 0.5° resolution), (3) Open-Meteo Archive (ERA5-Land, ~9km resolution),
+  and (4) EVAonline Kalman fusion results. Data covers 17 Brazilian cities in the
+  MATOPIBA region plus Piracicaba (São Paulo) spanning 1991-2020, totaling 186,287
+  daily observations. EVAonline demonstrates superior performance with MAE=0.42 mm/day,
+  PBIAS=0.71%, and KGE=0.814, significantly outperforming NASA POWER (MAE=0.84,
+  PBIAS=15.78%, KGE=0.411) and Open-Meteo (MAE=0.86, PBIAS=13.02%, KGE=0.432).
+  The hybrid Kalman fusion achieves 38.7-50.8% MAE reduction and 91.4-95.5% BIAS
+  reduction compared to individual sources. The repository includes raw data,
+  validation scripts, statistical analyses, and reproducible Jupyter notebooks.
 references:
-  - type: article
+  - type: dataset
     authors:
       - family-names: "Xavier"
         given-names: "Alexandre Candido"
-      - family-names: "King"
-        given-names: "Carey W."
-      - family-names: "Scanlon"
-        given-names: "Bridget R."
-    title: "Daily gridded meteorological variables in Brazil (1980-2013)"
-    journal: "International Journal of Climatology"
-    year: 2016
-    volume: 36
-    issue: 6
-    pages: "2644-2659"
-    doi: "10.1002/joc.4518"
+    title: "Brazilian Daily Weather Gridded Data (BR-DWGD)"
+    year: 2024
     url: "https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data"
-  - type: article
+    notes: "Daily gridded meteorological data covering 1961/01/01-2024/03/20, 0.1° x 0.1° resolution, based on 3,625+ weather stations"
+  - type: software
     authors:
-      - family-names: "Xavier"
-        given-names: "Alexandre Candido"
-      - family-names: "Scanlon"
-        given-names: "Bridget R."
-      - family-names: "King"
-        given-names: "Carey W."
-    title: "An update of Xavier, Scanlon, and King (2016) daily precipitation gridded data set for the Brazil"
-    journal: "International Journal of Climatology"
-    year: 2022
-    volume: 42
-    issue: 16
-    pages: "9248-9259"
-    doi: "10.1002/joc.7731"
-    url: "https://rmets.onlinelibrary.wiley.com/doi/10.1002/joc.7731"
+      - family-names: "Zippenfenig"
+        given-names: "Patrick"
+    title: "Open-Meteo.com Weather API"
+    year: 2023
+    doi: "10.5281/zenodo.14582479"
+    url: "https://open-meteo.com/en/docs"
+  - type: software
+    title: "OpenTopoData: Open Elevation API"
+    year: 2024
+    url: "https://www.opentopodata.org/"
+    notes: "Global elevation data API used for altitude-based corrections in FAO-56 Penman-Monteith calculations"
+  - type: software
+    title: "Open-Meteo Forecast API"
+    year: 2024
+    url: "https://open-meteo.com/en/docs"
+    notes: "7-day weather forecast API for real-time ETo predictions"
+  - type: software
+    title: "Met Norway Locationforecast API"
+    year: 2024
+    url: "https://api.met.no/weatherapi/locationforecast/2.0/documentation"
+    notes: "Regional weather forecast API for Europe coverage"
+  - type: software
+    title: "National Weather Service (NWS) USA API"
+    year: 2024
+    url: "https://www.weather.gov/documentation/services-web-api"
+    notes: "Regional weather forecast and station data API for USA coverage"
   - type: manual
     title: "FAO Irrigation and Drainage Paper No. 56: Crop evapotranspiration"
     authors:

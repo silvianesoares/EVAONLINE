@@ -1,202 +1,106 @@
 """
-Cliente Async para NWS Stations (National Weather Service / NOAA).
-Licença: US Government Public Domain - Uso livre.
-
-Este cliente fornece acesso às observações meteorológicas de estações
-NWS para dados históricos e em tempo real.
-
-NWS Stations API:
-- Observações de ~1800 estações nos EUA
-- Dados horários históricos disponíveis
-- Sem autenticação necessária
-- User-Agent OBRIGATÓRIO (conforme documentação)
-- Rate limit: ~5 requests/second
-
-Coverage: USA (bbox: -125°W to -66°W, 18°N to 71°N)
-Extended: Inclui Alaska, Hawaii, territórios
-
-Endpoints utilizados:
-- /points/{lat},{lon}/stations → Lista estações próximas
-- /stations/{stationId}/observations → Observações históricas
-- /stations/{stationId}/observations/latest → Observação mais recente
-- /stations/{stationId}/observations/{time} → Observação específica
-
-Known Issues (2025):
-- Observações podem ter delay de até 20 minutos (MADIS)
-- Valores nulos em temp max/min fora do CST (Central Standard Time)
-- Precipitação <0.4" pode ser reportada como 0 (rounding)
-
-Workflow Típico:
-1. find_nearest_stations(lat, lon) → Estações próximas ordenadas
-2. get_station_observations(station_id, start, end) → Observações
-3. Agregar para diário: mean (temp/humidity/wind), sum (precip)
-
-API Reference: https://www.weather.gov/documentation/services-web-api
-General FAQs: https://weather-gov.github.io/api/general-faqs
+NWS Stations Client Optimized for Interactive Map + Daily ETo Calculation
 """
 
 import os
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, List
 
 import httpx
+import pandas as pd
+import geopy.distance
 from loguru import logger
 from pydantic import BaseModel, Field
 
-# Import para detecção regional (fonte única)
+# Para lidar com timezone da estação
+import pytz
+
+
+# Import opcional para fallback geográfico
+class _GeographicUtilsFallback:
+    @staticmethod
+    def is_in_usa(lat: float, lon: float) -> bool:
+        return -125 <= lon <= -66 and 24 <= lat <= 50
+
+
 try:
-    from validation_logic_eto.api.services.geographic_utils import (
-        GeographicUtils,
+    from scripts.api.services.geographic_utils import (
+        GeographicUtils as _GeographicUtils,
     )
 except ImportError:
-    from ..geographic_utils import GeographicUtils
+    try:
+        from ..geographic_utils import GeographicUtils as _GeographicUtils
+    except ImportError:
+        logger.warning("GeographicUtils not found - using simple fallback")
+        _GeographicUtils = _GeographicUtilsFallback
+
+GeographicUtils = _GeographicUtils
 
 
 class NWSStationsConfig(BaseModel):
-    """
-    Configuração da API NWS Stations.
-
-    Attributes:
-        base_url: URL base da API NWS
-        timeout: Timeout para requisições HTTP (segundos)
-        retry_attempts: Número de tentativas em caso de falha
-        retry_delay: Delay base para retry exponencial (segundos)
-        user_agent: User-Agent header (OBRIGATÓRIO pela API NWS)
-        max_stations: Máximo de estações para retornar
-        observation_delay_threshold: Threshold para log de delays (minutos)
-    """
-
     base_url: str = "https://api.weather.gov"
     timeout: int = 30
-    retry_attempts: int = 3
-    retry_delay: float = 1.0
+    # retry_attempts: int = 3
+    # retry_delay: float = 1.0
     user_agent: str = os.getenv(
         "NWS_USER_AGENT",
-        ("EVAonline/1.0 " "(https://github.com/silvianesoares/EVAONLINE)"),
+        "EVAonline (+https://github.com/silvianesoares/EVAONLINE)",
     )
-    max_stations: int = 10  # Máximo de estações para buscar
-    observation_delay_threshold: int = 20  # minutos
+    # max_stations: int = 10
+    # observation_delay_threshold: int = 30  # minutes (20min normal)
+    # max_days_back: int = 5  # Official NWS API limit = 7 days
+    observation_delay_threshold: int = 30  # minutes
+    max_days_back: int = 7  # NWS: up to ~7 days (3-4 in practice)
 
 
 class NWSStation(BaseModel):
-    """Dados de uma estação meteorológica NWS."""
+    model_config = {"populate_by_name": True}
 
-    station_id: str = Field(..., description="ID da estação (ex: KJFK)")
-    name: str = Field(..., description="Nome da estação")
-    latitude: float = Field(..., description="Latitude")
-    longitude: float = Field(..., description="Longitude")
-    elevation_m: float | None = Field(None, description="Elevação (m)")
-    timezone: str | None = Field(None, description="Fuso horário")
-    distance_km: float | None = Field(
-        None, description="Distância da coordenada de referência (km)"
-    )
+    station_id: str = Field(..., alias="stationIdentifier")
+    name: str
+    latitude: float
+    longitude: float
+    elevation_m: float | None = None
+    timezone: str | None = None
+    distance_km: float | None = None
+    is_active: bool = False  # Filled after verification
 
 
 class NWSObservation(BaseModel):
-    """
-    Observação meteorológica de uma estação NWS.
+    station_id: str
+    timestamp: datetime
+    temp_celsius: float | None = None
+    temp_max_24h: float | None = None
+    temp_min_24h: float | None = None
+    dewpoint_celsius: float | None = None
+    humidity_percent: float | None = None
+    wind_speed_ms: float | None = None  # 10m
+    wind_speed_2m_ms: float | None = None  # Converted for FAO-56
+    is_delayed: bool = False
 
-    Representa uma observação horária com parâmetros meteorológicos essenciais.
-    Nem todos os parâmetros são reportados por todas as estações.
 
-    Known Issues:
-        - Delays de até 20 minutos são normais (MADIS processing)
-        - Valores nulos em temp max/min fora do CST
-        - Precipitação <0.4" pode ser reportada como 0 (rounding)
-
-    Attributes:
-        - station_id: ID da estação (ex: KJFK)
-        - timestamp: Timestamp da observação (timezone-aware):
-           para agregação diária
-        - temp_celsius: Temperatura atual em °C
-        - temp_max_24h: Temperatura máxima últimas 24h em °C
-        - temp_min_24h: Temperatura mínima últimas 24h em °C
-        - dewpoint_celsius: Ponto de orvalho em °C (backup para calcular RH)
-        - humidity_percent: Umidade relativa (0-100%)
-        - wind_speed_ms: Velocidade do vento a 10m (m/s) - original da API
-        - wind_speed_2m_ms: Velocidade do vento a 2m (m/s):
-          convertido para FAO-56 PM
-        - precipitation_1h_mm: Precipitação última hora em mm
-        - is_delayed: Flag indicando se observação está atrasada (>20min):
-          controle de qualidade
-    """
-
-    station_id: str = Field(..., description="ID da estação")
-    timestamp: datetime = Field(..., description="Timestamp da observação")
-    temp_celsius: float | None = Field(None, description="Temperatura (°C)")
-    temp_max_24h: float | None = Field(
-        None, description="Temperatura máxima últimas 24h (°C)"
-    )
-    temp_min_24h: float | None = Field(
-        None, description="Temperatura mínima últimas 24h (°C)"
-    )
-    dewpoint_celsius: float | None = Field(
-        None, description="Ponto de orvalho (°C) - backup para calcular RH"
-    )
-    humidity_percent: float | None = Field(
-        None, description="Umidade relativa (%)"
-    )
-    wind_speed_ms: float | None = Field(
-        None, description="Velocidade vento a 10m (m/s)"
-    )
-    wind_speed_2m_ms: float | None = Field(
-        None,
-        description="Velocidade vento a 2m (m/s) - convertido para FAO-56 PM",
-    )
-    precipitation_1h_mm: float | None = Field(
-        None, description="Precipitação última hora (mm)"
-    )
-    is_delayed: bool = Field(
-        default=False, description="Observação atrasada (>20min)"
-    )
+class DailyEToData(BaseModel):
+    date: datetime
+    station_id: str
+    station_name: str
+    latitude: float
+    longitude: float
+    elevation_m: float | None
+    distance_km: float | None
+    T_max: float
+    T_min: float
+    T_mean: float
+    RH_mean: float | None
+    wind_2m_mean_ms: float | None
 
 
 class NWSStationsClient:
-    """
-    Cliente assíncrono para NWS Stations API.
-
-    Features:
-    - Busca estações meteorológicas próximas
-    - Observações históricas e em tempo real
-    - Dados horários de alta qualidade
-    - Domínio Público (sem restrições)
-    - Cache Redis integrado (opcional)
-    - Logs de known issues (delays, nulls, rounding)
-
-    Coverage:
-    - USA (incluindo Alaska, Hawaii, territórios)
-    - Longitude: -125°W a -66°W
-    - Latitude: 18°N a 71°N (extended bbox)
-
-    Known Issues Monitorados:
-    - Delays de até 20 minutos (MADIS processing)
-    - Valores nulos em temp max/min fora do CST (Central Standard Time)
-    - Precipitação <0.4" pode ser reportada como 0
-
-    Workflow típico:
-    1. find_nearest_stations(lat, lon) → Estações próximas ordenadas
-    2. get_station_observations(station_id, start, end) → Observações
-    3. Agregar para diário: mean (temp/humidity/wind), sum (precip)
-
-    API Reference: https://www.weather.gov/documentation/services-web-api
-    General FAQs: https://weather-gov.github.io/api/general-faqs
-    """
-
     def __init__(
-        self,
-        config: NWSStationsConfig | None = None,
-        cache: Any | None = None,
+        self, config: NWSStationsConfig | None = None, cache: Any | None = None
     ):
-        """
-        Inicializa cliente NWS Stations.
-
-        Args:
-            config: Configuração customizada (opcional)
-            cache: ClimateCacheService (opcional, DI)
-        """
         self.config = config or NWSStationsConfig()
+        self.cache = cache
 
-        # Headers recomendados NWS
         headers = {
             "User-Agent": self.config.user_agent,
             "Accept": "application/geo+json",
@@ -206,507 +110,360 @@ class NWSStationsClient:
             timeout=self.config.timeout,
             headers=headers,
             follow_redirects=True,
+            limits=httpx.Limits(max_connections=50),
         )
-        self.cache = cache
-        logger.info("✅ NWSStationsClient initialized")
+        logger.success("NWSStationsClient initialized")
 
     async def close(self):
-        """Fecha conexão HTTP."""
         await self.client.aclose()
-        logger.debug("NWSStationsClient connection closed")
 
-    def is_in_coverage(self, lat: float, lon: float) -> bool:
-        """
-        Verifica se coordenadas estão na cobertura USA Continental.
-
-        Args:
-            lat: Latitude
-            lon: Longitude
-
-        Returns:
-            bool: True se dentro do bbox USA
-        """
-        in_bbox = GeographicUtils.is_in_usa(lat, lon)
-
-        if not in_bbox:
-            logger.warning(
-                f"⚠️  Coordenadas ({lat}, {lon}) fora cobertura NWS USA"
-            )
-
-        return in_bbox
-
-    async def find_nearest_stations(
-        self, lat: float, lon: float, limit: int | None = None
-    ) -> list[NWSStation]:
-        """
-        Busca estações meteorológicas próximas.
-
-        Args:
-            lat: Latitude
-            lon: Longitude
-            limit: Número máximo de estações (padrão: config.max_stations)
-
-        Returns:
-            Lista de estações ordenadas por proximidade
-
-        Raises:
-            ValueError: Se coordenadas fora de cobertura
-            httpx.HTTPError: Erro de comunicação com API
-        """
-        if not self.is_in_coverage(lat, lon):
-            msg = f"Coordenadas ({lat}, {lon}) fora de cobertura NWS"
-            raise ValueError(msg)
-
-        limit = limit or self.config.max_stations
-
-        logger.info(f"🔍 Buscando estações NWS próximas a ({lat}, {lon})")
-
+    async def _get_grid(
+        self, lat: float, lon: float
+    ) -> tuple[str, int, int] | None:
+        """Get WFO, gridX, gridY from lat/lon"""
         try:
-            # Endpoint para buscar estações próximas
-            url = f"{self.config.base_url}/points/{lat:.4f},{lon:.4f}/stations"
+            url = f"{self.config.base_url}/points/{lat:.5f},{lon:.5f}"
+            resp = await self.client.get(url)
+            resp.raise_for_status()
+            data = resp.json()["properties"]
+            wfo = data["gridId"]  # Actually the WFO (e.g., OKX)
+            if wfo == "grid":  # Rare API bug
+                wfo = data["forecastOffice"].split("/")[-1]
+            return wfo.upper(), data["gridX"], data["gridY"]
+        except Exception as e:
+            logger.debug(f"Failed to get grid: {e}")
+            return None
 
-            response = await self.client.get(url)
-            response.raise_for_status()
-
-            data = response.json()
-            features = data.get("features", [])
-
-            stations = []
-            for feature in features[:limit]:
-                props = feature.get("properties", {})
-                geom = feature.get("geometry", {})
-                coords = geom.get("coordinates", [None, None])
-
-                station = NWSStation(
-                    station_id=props.get("stationIdentifier", ""),
-                    name=props.get("name", "Unknown"),
-                    latitude=coords[1] if len(coords) > 1 else lat,
-                    longitude=coords[0] if len(coords) > 0 else lon,
-                    elevation_m=props.get("elevation", {}).get("value"),
-                    timezone=props.get("timeZone"),
-                    distance_km=None,  # Calculado depois se necessário
-                )
-                stations.append(station)
-
-            logger.info(f"✅ Encontradas {len(stations)} estações NWS")
-            return stations
-
-        except httpx.HTTPError as e:
-            logger.error(f"❌ Erro ao buscar estações NWS: {e}")
-            raise
-
-    async def get_station_observations(
-        self,
-        station_id: str,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
-    ) -> list[NWSObservation]:
+    async def find_nearest_active_station(
+        self, lat: float, lon: float, max_candidates: int = 5
+    ) -> NWSStation | None:
         """
-        Busca observações de uma estação NWS.
-
-        IMPORTANTE: Este cliente ASSUME que:
-        - Coordenadas validadas em climate_validation.py
-        - Cobertura USA validada em climate_source_selector.py
-        - Period validado em climate_source_availability.py
-        Este cliente APENAS busca dados, sem re-validar.
-
-        Args:
-            station_id: ID da estação (ex: "KJFK")
-            start_date: Data inicial (opcional, padrão: últimas 24h)
-            end_date: Data final (opcional, padrão: agora)
-
-        Returns:
-            Lista de observações horárias
-
-        Raises:
-            httpx.HTTPError: Erro de comunicação com API
+        Returns the nearest station that is active (with recent valid
+        observation). Ideal for direct use in interactive map.
         """
-        # Defaults: últimas 24 horas
-        if end_date is None:
-            end_date = datetime.now()
-        if start_date is None:
-            start_date = end_date - timedelta(days=1)
+        if not GeographicUtils.is_in_usa(lat, lon):
+            logger.warning(
+                f"Coordinates ({lat}, {lon}) outside main USA coverage"
+            )
+            return None
 
         logger.info(
-            f"📊 Buscando observações NWS: {station_id} "
-            f"({start_date.date()} a {end_date.date()})"
+            f"Searching for active station near ({lat:.4f}, {lon:.4f})"
         )
 
+        grid = await self._get_grid(lat, lon)
+        url = None
+        if grid:
+            wfo, x, y = grid
+            url = (
+                f"{self.config.base_url}/gridpoints/{wfo}/{x},{y}/"
+                f"stations?limit={max_candidates}"
+            )
+
+        if not url:
+            # Fallback: old endpoint
+            url = f"{self.config.base_url}/points/{lat:.4f},{lon:.4f}/stations"
+
         try:
-            # Endpoint de observações
-            url = f"{self.config.base_url}/stations/{station_id}/observations"
+            resp = await self.client.get(url)
+            resp.raise_for_status()
+            features = resp.json().get("features", [])
 
-            # Parâmetros de query (remover microsegundos para API NWS)
-            params = {
-                "start": start_date.replace(microsecond=0).isoformat() + "Z",
-                "end": end_date.replace(microsecond=0).isoformat() + "Z",
-            }
+            for feature in features:
+                props = feature["properties"]
+                geom = feature["geometry"]["coordinates"]  # [lon, lat]
 
-            response = await self.client.get(url, params=params)
-            response.raise_for_status()
+                station = NWSStation(
+                    stationIdentifier=props["stationIdentifier"],
+                    name=props.get("name", "Unknown"),
+                    latitude=geom[1],
+                    longitude=geom[0],
+                    elevation_m=props.get("elevation", {}).get("value"),
+                    timezone=props.get("timeZone"),
+                )
 
-            data = response.json()
-            features = data.get("features", [])
+                # Calculate distance
+                station.distance_km = round(
+                    geopy.distance.distance(
+                        (lat, lon), (station.latitude, station.longitude)
+                    ).km,
+                    3,
+                )
+
+                # Check if active
+                latest = await self.get_latest_observation(station.station_id)
+                if (
+                    latest
+                    and not latest.is_delayed
+                    and latest.temp_celsius is not None
+                ):
+                    station.is_active = True
+                    logger.success(
+                        f"ACTIVE station found: {station.station_id} "
+                        f"({station.name}) - {station.distance_km} km - "
+                        f"elev: {station.elevation_m or 'N/A'} m"
+                    )
+                    return station
+
+            # If none active, return nearest
+            if features:
+                first = features[0]["properties"]
+                geom = features[0]["geometry"]["coordinates"]
+                fallback = NWSStation(
+                    stationIdentifier=first["stationIdentifier"],
+                    name=first.get("name", "Unknown"),
+                    latitude=geom[1],
+                    longitude=geom[0],
+                    elevation_m=first.get("elevation", {}).get("value"),
+                    distance_km=round(
+                        geopy.distance.distance(
+                            (lat, lon), (geom[1], geom[0])
+                        ).km,
+                        3,
+                    ),
+                    is_active=False,
+                )
+                logger.warning(
+                    f"No active station - using fallback: "
+                    f"{fallback.station_id}"
+                )
+                return fallback
+
+        except Exception as e:
+            logger.error(f"Error searching for stations: {e}")
+
+        return None
+
+    async def get_observations(
+        self,
+        station_id: str,
+        days_back: int = 7,
+    ) -> List[NWSObservation]:
+        """
+        Fetch up to 7 days of hourly station observations.
+        NWS API ignores start/end → we get last 500 records and filter locally.
+        """
+        days_back = min(days_back, 7)
+        cutoff_time = datetime.now(pytz.UTC) - timedelta(days=days_back)
+
+        url = f"{self.config.base_url}/stations/{station_id}/observations"
+        params = {"limit": 500}  # Maximum allowed
+
+        try:
+            resp = await self.client.get(url, params=params)
+            resp.raise_for_status()
+            features = resp.json().get("features", [])
 
             observations = []
-            for feature in features:
-                props = feature.get("properties", {})
 
-                # Parse timestamp
-                timestamp_str = props.get("timestamp", "")
-                try:
-                    timestamp = datetime.fromisoformat(
-                        timestamp_str.replace("Z", "+00:00")
-                    )
-                except (ValueError, AttributeError):
-                    logger.warning(f"Invalid timestamp: {timestamp_str}")
+            for f in features:
+                p = f["properties"]
+                ts_str = p.get("timestamp")
+                if not ts_str:
                     continue
 
-                # Check for observation delay (known issue: up to 20min)
-                now = datetime.now(timestamp.tzinfo)
-                delay_minutes = (now - timestamp).total_seconds() / 60
+                try:
+                    timestamp = datetime.fromisoformat(
+                        ts_str.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    continue
+
+                # Filter by date (API doesn't do this)
+                if timestamp < cutoff_time:
+                    continue
+
+                # Calculate delay (for logging and optional filtering)
+                delay_minutes = (
+                    datetime.now(pytz.UTC) - timestamp
+                ).total_seconds() / 60
                 is_delayed = (
                     delay_minutes > self.config.observation_delay_threshold
                 )
 
-                if is_delayed:
-                    logger.warning(
-                        f"⚠️  Observação atrasada: {delay_minutes:.1f} min "
-                        f"(MADIS processing delay)"
-                    )
-
-                # Extrair valores com unidades
-                temp = self._extract_value(props.get("temperature"))
-                temp_max_24h = self._extract_value(
-                    props.get("maxTemperatureLast24Hours")
+                # Wind: km/h → m/s → 2m (FAO-56 official)
+                wind_10m_kmh = self._val(
+                    p.get("windSpeed")
+                )  # None or value in km/h
+                wind_10m_ms = (
+                    wind_10m_kmh / 3.6 if wind_10m_kmh is not None else None
                 )
-                temp_min_24h = self._extract_value(
-                    props.get("minTemperatureLast24Hours")
-                )
-                dewpoint = self._extract_value(props.get("dewpoint"))
-                humidity = self._extract_value(props.get("relativeHumidity"))
-
-                # Log null values (known issue: max/min outside CST)
-                if temp is None:
-                    logger.warning(
-                        "⚠️  Temperatura nula - possível issue "
-                        "max/min fora CST"
-                    )
-
-                if temp_max_24h is None or temp_min_24h is None:
-                    logger.debug(
-                        "⚠️  Temp max/min 24h nulas - issue conhecido fora CST"
-                    )
-
-                # Precipitação com log de rounding issue
-                precip = self._extract_value(
-                    props.get("precipitationLastHour")
-                )
-                if precip is not None and 0 < precip < 10:
-                    logger.warning(
-                        f"⚠️  Precipitação {precip}mm pode ter rounding down "
-                        f'(<0.4" issue)'
-                    )
-
-                # Extrair e converter vento de 10m para 2m
-                wind_10m = self._extract_value(props.get("windSpeed"))
-                wind_2m = self.convert_wind_10m_to_2m(wind_10m)
+                wind_2m_ms = self.convert_wind_to_2m(wind_10m_ms, z=10.0)
 
                 obs = NWSObservation(
                     station_id=station_id,
                     timestamp=timestamp,
-                    temp_celsius=temp,
-                    temp_max_24h=temp_max_24h,
-                    temp_min_24h=temp_min_24h,
-                    dewpoint_celsius=dewpoint,
-                    humidity_percent=humidity,
-                    wind_speed_ms=wind_10m,
-                    wind_speed_2m_ms=wind_2m,
-                    precipitation_1h_mm=precip,
+                    temp_celsius=self._val(p.get("temperature")),
+                    temp_max_24h=self._val(p.get("maxTemperatureLast24Hours")),
+                    temp_min_24h=self._val(p.get("minTemperatureLast24Hours")),
+                    dewpoint_celsius=self._val(p.get("dewpoint")),
+                    humidity_percent=self._val(p.get("relativeHumidity")),
+                    wind_speed_ms=wind_10m_ms,
+                    wind_speed_2m_ms=wind_2m_ms,
                     is_delayed=is_delayed,
                 )
                 observations.append(obs)
 
-            logger.info(f"✅ Obtidas {len(observations)} observações NWS")
+            # Sort from oldest to newest (important for aggregation!)
+            observations.sort(key=lambda x: x.timestamp)
+
+            logger.info(
+                f"{len(observations)} observations kept "
+                f"(requested: {days_back} days) - {station_id}"
+            )
             return observations
 
-        except httpx.HTTPError as e:
-            logger.error(
-                f"❌ Erro ao buscar observações NWS {station_id}: {e}"
-            )
-            raise
+        except Exception as e:
+            logger.error(f"Failed to get observations from {station_id}: {e}")
+            return []
 
     async def get_latest_observation(
         self, station_id: str
     ) -> NWSObservation | None:
-        """
-        Busca observação mais recente de uma estação.
-
-        Inclui checks para known issues (delays, nulls, rounding).
-
-        Args:
-            station_id: ID da estação
-
-        Returns:
-            Observação mais recente ou None se não disponível
-        """
-        logger.info(f"📡 Buscando observação mais recente: {station_id}")
-
         try:
             url = (
-                f"{self.config.base_url}/stations/"
-                f"{station_id}/observations/latest"
+                f"{self.config.base_url}/stations/{station_id}/"
+                f"observations/latest"
             )
+            resp = await self.client.get(url)
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            p = resp.json()["properties"]
+            ts = datetime.fromisoformat(p["timestamp"].replace("Z", "+00:00"))
+            delay_min = (datetime.now(pytz.UTC) - ts).total_seconds() / 60
 
-            response = await self.client.get(url)
-            response.raise_for_status()
+            # Extract wind speed (NWS returns km/h, convert to m/s)
+            wind_10m_ms = self._extract_wind_speed_ms(p.get("windSpeed"))
 
-            data = response.json()
-            props = data.get("properties", {})
-
-            # Parse timestamp
-            timestamp_str = props.get("timestamp", "")
-            timestamp = datetime.fromisoformat(
-                timestamp_str.replace("Z", "+00:00")
-            )
-
-            # Check for delay
-            now = datetime.now(timestamp.tzinfo)
-            delay_minutes = (now - timestamp).total_seconds() / 60
-            is_delayed = (
-                delay_minutes > self.config.observation_delay_threshold
-            )
-
-            if is_delayed:
-                logger.warning(
-                    f"⚠️  Observação atrasada: {delay_minutes:.1f} min"
-                )
-
-            # Extract with checks
-            temp = self._extract_value(props.get("temperature"))
-            temp_max_24h = self._extract_value(
-                props.get("maxTemperatureLast24Hours")
-            )
-            temp_min_24h = self._extract_value(
-                props.get("minTemperatureLast24Hours")
-            )
-
-            if temp is None:
-                logger.warning(
-                    "⚠️  Temp nula - possível issue max/min fora CST"
-                )
-
-            precip = self._extract_value(props.get("precipitationLastHour"))
-            if precip is not None and 0 < precip < 10:
-                logger.warning(f"⚠️  Precip {precip}mm - possível rounding")
-
-            # Extrair e converter vento de 10m para 2m
-            wind_10m = self._extract_value(props.get("windSpeed"))
-            wind_2m = self.convert_wind_10m_to_2m(wind_10m)
+            # Apply FAO-56 official conversion (10m → 2m)
+            wind_2m_ms = self.convert_wind_to_2m(wind_10m_ms, z=10.0)
 
             obs = NWSObservation(
                 station_id=station_id,
-                timestamp=timestamp,
-                temp_celsius=temp,
-                temp_max_24h=temp_max_24h,
-                temp_min_24h=temp_min_24h,
-                dewpoint_celsius=self._extract_value(props.get("dewpoint")),
-                humidity_percent=self._extract_value(
-                    props.get("relativeHumidity")
-                ),
-                wind_speed_ms=wind_10m,
-                wind_speed_2m_ms=wind_2m,
-                precipitation_1h_mm=precip,
-                is_delayed=is_delayed,
+                timestamp=ts,
+                temp_celsius=self._val(p.get("temperature")),
+                humidity_percent=self._val(p.get("relativeHumidity")),
+                wind_speed_ms=wind_10m_ms,
+                wind_speed_2m_ms=wind_2m_ms,
+                is_delayed=delay_min > self.config.observation_delay_threshold,
             )
-
-            logger.info("✅ Observação mais recente obtida")
             return obs
-
-        except httpx.HTTPError as e:
-            logger.warning(
-                f"⚠️  Não foi possível obter observação de {station_id}: {e}"
-            )
+        except Exception:
             return None
 
-    async def get_observation_by_time(
-        self, station_id: str, observation_time: datetime
-    ) -> NWSObservation | None:
-        """
-        Busca observação de um timestamp específico.
-
-        Útil para obter dados históricos de dias específicos.
-
-        Args:
-            station_id: ID da estação
-            observation_time: Timestamp específico (datetime)
-
-        Returns:
-            Observação do timestamp ou None se não disponível
-        """
-        logger.info(
-            f"📊 Buscando observação: {station_id} "
-            f"em {observation_time.isoformat()}"
-        )
-
-        try:
-            # Format time for API
-            time_str = observation_time.strftime("%Y-%m-%dT%H:%M:%SZ")
-            url = (
-                f"{self.config.base_url}/stations/"
-                f"{station_id}/observations/{time_str}"
-            )
-
-            response = await self.client.get(url)
-            response.raise_for_status()
-
-            data = response.json()
-            props = data.get("properties", {})
-
-            # Parse timestamp
-            timestamp_str = props.get("timestamp", "")
-            timestamp = datetime.fromisoformat(
-                timestamp_str.replace("Z", "+00:00")
-            )
-
-            # Check delay
-            now = datetime.now(timestamp.tzinfo)
-            delay_minutes = (now - timestamp).total_seconds() / 60
-            is_delayed = (
-                delay_minutes > self.config.observation_delay_threshold
-            )
-
-            # Extract with checks
-            temp = self._extract_value(props.get("temperature"))
-            temp_max_24h = self._extract_value(
-                props.get("maxTemperatureLast24Hours")
-            )
-            temp_min_24h = self._extract_value(
-                props.get("minTemperatureLast24Hours")
-            )
-            precip = self._extract_value(props.get("precipitationLastHour"))
-
-            # Extrair e converter vento de 10m para 2m
-            wind_10m = self._extract_value(props.get("windSpeed"))
-            wind_2m = self.convert_wind_10m_to_2m(wind_10m)
-
-            obs = NWSObservation(
-                station_id=station_id,
-                timestamp=timestamp,
-                temp_celsius=temp,
-                temp_max_24h=temp_max_24h,
-                temp_min_24h=temp_min_24h,
-                dewpoint_celsius=self._extract_value(props.get("dewpoint")),
-                humidity_percent=self._extract_value(
-                    props.get("relativeHumidity")
-                ),
-                wind_speed_ms=wind_10m,
-                wind_speed_2m_ms=wind_2m,
-                precipitation_1h_mm=precip,
-                is_delayed=is_delayed,
-            )
-
-            logger.info("✅ Observação obtida")
-            return obs
-
-        except httpx.HTTPError as e:
-            logger.warning(f"⚠️  Observação não disponível: {e}")
+    def _val(self, data: dict | None) -> float | None:
+        if not data or data.get("value") is None:
             return None
-
-    def _extract_value(self, data: dict | None) -> float | None:
-        """
-        Extrai valor numérico de objeto com unidade NWS.
-
-        NWS retorna valores como: {"value": 20.5, "unitCode": "unit:degC"}
-
-        Args:
-            data: Dicionário com value e unitCode
-
-        Returns:
-            Valor numérico ou None
-        """
-        if data is None:
-            return None
-
-        value = data.get("value")
-        if value is None:
-            return None
-
-        # Converter para float se necessário
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return None
+        return float(data["value"])
 
     @staticmethod
-    def convert_wind_10m_to_2m(wind_10m: float | None) -> float | None:
+    def _extract_wind_speed_ms(wind_data: dict | None) -> float | None:
         """
-        Converte velocidade do vento de 10m para 2m usando perfil logarítmico.
-
-        Fórmula FAO-56 (Allen et al., 1998):
-        u2 = uz × (4.87) / ln(67.8 × z - 5.42)
-
-        onde:
-        - u2 = velocidade do vento a 2m (m/s)
-        - uz = velocidade do vento na altura z (m/s)
-        - z = altura de medição (10m)
-        - ln = logaritmo natural
-
-        Para z=10m:
-        u2 = u10 × 4.87 / ln(67.8×10 - 5.42)
-        u2 = u10 × 4.87 / ln(672.58)
-        u2 = u10 × 4.87 / 6.511
-        u2 ≈ u10 × 0.748
-
-        Referência: FAO Irrigation and Drainage Paper 56
-        Chapter 3, Equation 47
+        Extract wind speed from NWS API and convert to m/s.
+        NWS returns in km/h → we convert to m/s.
 
         Args:
-            wind_10m: Velocidade do vento a 10m (m/s)
+            wind_data: Wind data dict from NWS API with 'value' in km/h
 
         Returns:
-            Velocidade do vento a 2m (m/s) ou None
+            Wind speed in m/s, or None if invalid
         """
-        if wind_10m is None:
+        if not wind_data or wind_data.get("value") is None:
+            return None
+        kmh = float(wind_data["value"])
+        return round(kmh / 3.6, 3)  # km/h → m/s
+
+    @staticmethod
+    def convert_wind_to_2m(u_z: float | None, z: float = 10.0) -> float | None:
+        """
+        FAO-56 Eq. 47 - Convert wind from any height z to 2m reference.
+
+        Uses logarithmic wind profile equation from FAO-56 for accurate
+        conversion, ensuring consistency with ETo calculations.
+
+        Formula: u2 = uz * [4.87 / ln(67.8*z - 5.42)]
+
+        Args:
+            u_z: Wind speed at height z (m/s)
+            z: Measurement height (m) - default 10m for NWS
+
+        Returns:
+            Wind speed at 2m (m/s), minimum 0.5 m/s for stability
+
+        Reference:
+            Allen, R. G., Pereira, L. S., Raes, D., & Smith, M. (1998).
+            Crop evapotranspiration - FAO Irrigation and drainage paper 56.
+        """
+        if u_z is None:
             return None
 
-        # Conversão direta usando fator 0.748 (pré-calculado)
-        return wind_10m * 0.748
+        if z == 2.0:
+            return max(float(u_z), 0.5)
 
-    async def health_check(self) -> bool:
-        """
-        Verifica se API NWS Stations está acessível.
+        import numpy as np
 
-        Returns:
-            True se API responde, False caso contrário
-        """
-        try:
-            # Testar com uma estação conhecida (JFK Airport)
-            url = f"{self.config.base_url}/stations/KJFK"
-            response = await self.client.get(url)
-            response.raise_for_status()
+        factor = 4.87 / np.log(67.8 * z - 5.42)
+        u2 = u_z * factor
+        return max(float(u2), 0.5)  # Physical minimum for stability
 
-            logger.info("✅ NWS Stations API: Healthy")
-            return True
+    def aggregate_to_daily(
+        self, observations: List[NWSObservation], station: NWSStation
+    ) -> List[DailyEToData]:
+        """Aggregate hourly data to daily ready for ETo"""
+        if not observations:
+            return []
 
-        except Exception as e:
-            logger.error(f"❌ NWS Stations API health check failed: {e}")
-            return False
+        df = pd.DataFrame([o.dict() for o in observations])
+        df["date"] = pd.to_datetime(df["timestamp"]).dt.date
+
+        daily = (
+            df.groupby("date")
+            .agg(
+                T_max=("temp_celsius", "max"),
+                T_min=("temp_celsius", "min"),
+                T_mean=("temp_celsius", "mean"),
+                RH_mean=("humidity_percent", "mean"),
+                wind_2m_mean_ms=("wind_speed_2m_ms", "mean"),
+            )
+            .round(2)
+            .reset_index()
+        )
+
+        result = []
+        for _, row in daily.iterrows():
+            result.append(
+                DailyEToData(
+                    date=datetime.combine(row["date"], datetime.min.time()),
+                    station_id=station.station_id,
+                    station_name=station.name,
+                    latitude=station.latitude,
+                    longitude=station.longitude,
+                    elevation_m=station.elevation_m,
+                    distance_km=station.distance_km,
+                    T_max=row["T_max"],
+                    T_min=row["T_min"],
+                    T_mean=row["T_mean"],
+                    RH_mean=row["RH_mean"],
+                    wind_2m_mean_ms=row["wind_2m_mean_ms"],
+                )
+            )
+        return result
 
     @staticmethod
     def get_data_availability_info() -> dict[str, Any]:
         """
-        Retorna informações sobre disponibilidade de dados.
+        Returns information about data availability.
 
-        Inclui known issues documentados.
+        Includes documented known issues.
 
         Returns:
-            Dict com informações de cobertura, limites e issues
+            Dict with coverage, limits, and issues information
         """
         return {
             "source": "NWS Stations (NOAA)",
-            "coverage": "USA (incluindo Alaska, Hawaii, territórios)",
-            "stations": "~1800 estações ativas",
+            "coverage": "USA (including Alaska, Hawaii, territories)",
+            "stations": "~1800 active stations",
             "data_type": "Hourly observations",
             "bbox": {
                 "lon_min": -180.0,
@@ -727,28 +484,14 @@ class NWSStationsClient:
                 "null_temps": (
                     "Max/min temps may be null outside CST timezone"
                 ),
-                "precip_rounding": (
-                    "Precipitation <0.4 inches may round down to 0"
-                ),
                 "station_variability": (
                     "Not all stations report all parameters"
                 ),
             },
         }
 
+    # Factory
 
-# Factory function para compatibilidade
-def create_nws_stations_client(
-    config: NWSStationsConfig | None = None, cache: Any | None = None
-) -> NWSStationsClient:
-    """
-    Factory function para criar NWSStationsClient.
 
-    Args:
-        config: Configuração customizada
-        cache: Cache service
-
-    Returns:
-        NWSStationsClient configurado
-    """
-    return NWSStationsClient(config=config, cache=cache)
+def create_nws_client() -> NWSStationsClient:
+    return NWSStationsClient()

@@ -1,46 +1,61 @@
 """
-Adapter síncrono para NWS Stations Client (National Weather Service).
+Synchronous Adapter for NWS Stations Client (National Weather Service).
 
-Este adapter permite usar o cliente assíncrono NWS Stations em código síncrono,
-facilitando a integração com data_download.py que usa Celery (síncrono).
+This adapter allows using the asynchronous NWS Stations client in
+synchronous code, facilitating integration with data_download.py which
+uses Celery (synchronous).
 
-Padrão seguido: NASAPowerSyncAdapter
+Pattern followed: NASAPowerSyncAdapter
 
 Features:
-- Conversão de dados horários NWS em agregações diárias (pandas)
-- Monitoramento de known issues (delays, nulls, rounding)
-- Filtragem de observações atrasadas (opcional)
-- Logging detalhado de qualidade dos dados
-- Cache Redis integrado (opcional)
+- Conversion of hourly NWS data to daily aggregations (pandas)
+- Monitoring of known issues (delays, nulls, rounding)
+- Filtering of delayed observations (optional)
+- Detailed data quality logging
+- Integrated Redis cache (optional)
 
-Known Issues Tratados:
-- Observações atrasadas (>20min MADIS delay) - filtradas opcionalmente
-- Valores nulos em temperaturas (max/min fora CST) - skipados
-- Precipitação <0.4" rounding down - mantida com warning
-
-Usage:
-    >>> adapter = NWSStationsSyncAdapter()
-    >>> data = adapter.get_daily_data_sync(
-    ...     lat=40.7128,  # NYC
-    ...     lon=-74.0060,
-    ...     start_date=datetime(2024, 10, 1),
-    ...     end_date=datetime(2024, 10, 7)
-    ... )
-    >>> print(f"Obtidos {len(data)} registros de NWS")
+Known Issues Handled:
+- Delayed observations (>20min MADIS delay) - optionally filtered
+- Null values in temperatures (max/min outside CST) - skipped
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import pandas as pd
 from loguru import logger
 
 from .nws_stations_client import NWSStationsClient, NWSStationsConfig
 
 
+class _FallbackGeographicUtils:
+    """Fallback GeographicUtils when the real one is not available."""
+
+    @staticmethod
+    def is_in_usa(lat: float, lon: float) -> bool:
+        """Fallback: simple bounding box for USA."""
+        return -125 <= lon <= -66 and 24 <= lat <= 50
+
+
+# Import GeographicUtils for coverage validation
+GeographicUtils: type = _FallbackGeographicUtils
+try:
+    from scripts.api.services.geographic_utils import (
+        GeographicUtils,  # type: ignore[no-redef]
+    )
+except ImportError:
+    try:
+        from ..geographic_utils import (
+            GeographicUtils,
+        )  # type: ignore[no-redef]
+    except ImportError:
+        logger.warning(
+            "GeographicUtils not found - using fallback for USA coverage"
+        )
+
+
 class DailyNWSData:
-    """Dados diários agregados de NWS (convertidos de dados horários)."""
+    """Aggregated daily NWS data (converted from hourly data)."""
 
     def __init__(
         self,
@@ -50,8 +65,6 @@ class DailyNWSData:
         temp_mean: float | None = None,
         humidity: float | None = None,
         wind_speed: float | None = None,
-        solar_radiation: float | None = None,
-        precipitation: float | None = None,
     ):
         self.date = date
         self.temp_min = temp_min
@@ -59,36 +72,34 @@ class DailyNWSData:
         self.temp_mean = temp_mean
         self.humidity = humidity
         self.wind_speed = wind_speed
-        self.solar_radiation = solar_radiation
-        self.precipitation = precipitation
 
 
 class NWSStationsSyncAdapter:
     """
-    Adapter síncrono para NWSStationsClient assíncrono.
+    Synchronous adapter for asynchronous NWSStationsClient.
 
-    Converte chamadas síncronas em assíncronas usando asyncio.run(),
-    mantendo compatibilidade com código legacy (Celery tasks).
+    Converts synchronous calls to asynchronous using asyncio.run(),
+    maintaining compatibility with legacy code (Celery tasks).
 
-    Responsabilidades:
-    - Interface síncrona simples
-    - Conversão de dados horários NWS em agregações diárias (pandas)
-    - Mapeamento de campos NWS → padrão EVAonline
-    - Filtragem de observações atrasadas (opcional)
-    - Logging detalhado de qualidade dos dados
-    - Tratamento de erros gracioso
+    Responsibilities:
+    - Simple synchronous interface
+    - Conversion of hourly NWS data to daily aggregations (pandas)
+    - Mapping of NWS fields → EVAonline standard
+    - Filtering of delayed observations (optional)
+    - Detailed data quality logging
+    - Graceful error handling
 
-    NWS API Detalhes:
-    - Retorna dados HORÁRIOS de estações meteorológicas
-    - Precisamos agregar em DIÁRIOS usando pandas
-    - Cobertura: USA Extended (incluindo Alaska, Hawaii)
-    - Sem autenticação necessária
+    NWS API Details:
+    - Returns HOURLY data from weather stations
+    - We need to aggregate to DAILY using pandas
+    - Coverage: USA Extended (including Alaska, Hawaii)
+    - No authentication required
     - Known issues: delays (MADIS), nulls (CST), rounding (<0.4")
 
     Args:
-        config: Configuração NWS Stations (opcional)
-        cache: Cache service (opcional)
-        filter_delayed: Filtrar observações atrasadas >20min (padrão: False)
+        config: NWS Stations configuration (optional)
+        cache: Cache service (optional)
+        filter_delayed: Filter delayed observations >20min (default: False)
     """
 
     def __init__(
@@ -98,12 +109,12 @@ class NWSStationsSyncAdapter:
         filter_delayed: bool = False,
     ):
         """
-        Inicializa adapter.
+        Initialize adapter.
 
         Args:
-            config: Configuração NWS Stations (opcional)
-            cache: Cache service (opcional)
-            filter_delayed: Se True, remove observações com delay >20min
+            config: NWS Stations configuration (optional)
+            cache: Cache service (optional)
+            filter_delayed: If True, remove observations with delay >20min
         """
         self.config = config or NWSStationsConfig()
         self.cache = cache
@@ -121,33 +132,33 @@ class NWSStationsSyncAdapter:
         end_date: datetime,
     ) -> list[DailyNWSData]:
         """
-        Busca dados diários de forma síncrona.
+        Fetch daily data synchronously.
 
-        Internamente:
-        1. Chama NWS API (retorna dados horários)
-        2. Agrupa por dia
-        3. Calcula min, max, média
-        4. Retorna como DailyNWSData
+        Internally:
+        1. Call NWS API (returns hourly data)
+        2. Group by day
+        3. Calculate min, max, mean
+        4. Return as DailyNWSData
 
         Args:
-            lat: Latitude (-90 a 90, deve estar na cobertura USA)
-            lon: Longitude (-180 a 180, deve estar na cobertura USA)
-            start_date: Data inicial
-            end_date: Data final
+            lat: Latitude (-90 to 90, must be in USA coverage)
+            lon: Longitude (-180 to 180, must be in USA coverage)
+            start_date: Start date
+            end_date: End date
 
         Returns:
-            List[DailyNWSData]: Dados diários
+            List[DailyNWSData]: Daily data
 
         Raises:
-            ValueError: Se coordenadas fora de USA
-            Exception: Se requisição falhar
+            ValueError: If coordinates outside USA
+            Exception: If request fails
         """
         logger.debug(
             f"NWS Sync request: lat={lat}, lon={lon}, "
             f"dates={start_date.date()} to {end_date.date()}"
         )
 
-        # Executa função assíncrona de forma síncrona
+        # Execute async function synchronously
         return asyncio.run(
             self._async_get_daily_data(
                 lat=lat,
@@ -165,61 +176,81 @@ class NWSStationsSyncAdapter:
         end_date: datetime,
     ) -> list[DailyNWSData]:
         """
-        Método assíncrono interno.
+        Internal asynchronous method.
 
-        Fluxo:
-        1. Cria cliente NWS Stations
-        2. Valida cobertura
-        3. Busca estação mais próxima
-        4. Busca observações da estação
-        5. Agrupa por dia
-        6. Calcula agregações (min, max, média)
-        7. Retorna como DailyNWSData
+        Flow:
+        1. Create NWS Stations client
+        2. Validate coverage
+        3. Find nearest station
+        4. Fetch station observations
+        5. Group by day
+        6. Calculate aggregations (min, max, mean)
+        7. Return as DailyNWSData
         """
         client = NWSStationsClient(config=self.config, cache=self.cache)
 
         try:
-            # 1. Validar cobertura USA
-            if not client.is_in_coverage(lat=lat, lon=lon):
+            # 1. Validate USA coverage
+            if not GeographicUtils.is_in_usa(lat=lat, lon=lon):
                 logger.warning(
-                    f"⚠️  Coordenadas ({lat}, {lon}) "
-                    f"fora da cobertura NWS (USA)"
+                    f"Coordinates ({lat}, {lon}) outside NWS coverage (USA)"
                 )
-                msg = (
-                    f"NWS: Coordenadas ({lat}, {lon}) "
-                    f"fora da cobertura USA"
-                )
+                msg = f"NWS: Coordinates ({lat}, {lon}) outside USA coverage"
                 raise ValueError(msg)
 
-            # 2. Buscar estações próximas
-            logger.info(f"� Buscando estações NWS próximas: ({lat}, {lon})")
-            stations = await client.find_nearest_stations(
-                lat=lat, lon=lon, limit=1
-            )
-
-            if not stations:
-                logger.warning("❌ Nenhuma estação NWS encontrada")
-                return []
-
-            station = stations[0]
+            # 2. Find nearest active station
             logger.info(
-                f"📡 Usando estação: {station.station_id} " f"({station.name})"
+                f"Searching for nearest active NWS station: " f"({lat}, {lon})"
+            )
+            station = await client.find_nearest_active_station(
+                lat=lat, lon=lon, max_candidates=5
             )
 
-            # 3. Buscar observações da estação
-            observations = await client.get_station_observations(
+            if not station:
+                logger.warning("No NWS station found")
+                return []
+            logger.info(
+                f"Using station: {station.station_id} ({station.name}) - "
+                f"{station.distance_km:.1f} km away - "
+                f"elev: {station.elevation_m or 'N/A'} m - "
+                f"active: {'YES' if station.is_active else 'NO (fallback)'}"
+            )
+
+            # 3. Calculate and validate date range (NWS 7-day limit)
+            today_utc = datetime.utcnow().date()
+            max_start = today_utc - timedelta(days=6)  # 7 days including today
+
+            requested_start = start_date.date()
+            if requested_start < max_start:
+                logger.warning(
+                    f"NWS only has 7 days of history - adjusting "
+                    f"start_date from {requested_start} to {max_start}"
+                )
+                start_date = datetime.combine(
+                    max_start, datetime.min.time(), tzinfo=timezone.utc
+                )
+            else:
+                if start_date.tzinfo is None:
+                    start_date = start_date.replace(tzinfo=timezone.utc)
+
+            days_back = (end_date.date() - start_date.date()).days + 1
+            days_back = min(days_back, 7)  # Enforce API limit
+
+            # 4. Fetch station observations
+            observations = await client.get_observations(
                 station_id=station.station_id,
-                start_date=start_date,
-                end_date=end_date,
+                days_back=days_back,
             )
 
             if not observations:
-                logger.warning("❌ NWS retornou dados vazios")
+                logger.warning("NWS returned empty data")
                 return []
 
-            logger.info(f"✅ NWS: {len(observations)} observações horárias")
+            logger.info(
+                f"NWS: {len(observations)} hourly observations retrieved"
+            )
 
-            # Filtrar observações atrasadas (se configurado)
+            # Filter delayed observations (if configured)
             if self.filter_delayed:
                 original_count = len(observations)
                 observations = [
@@ -229,8 +260,8 @@ class NWSStationsSyncAdapter:
                 if filtered_count > 0:
                     threshold = self.config.observation_delay_threshold
                     logger.warning(
-                        f"⚠️  Filtradas {filtered_count} observações "
-                        f"atrasadas (>{threshold}min)"
+                        f"Filtered {filtered_count} delayed observations "
+                        f"(>{threshold}min)"
                     )
 
             # Log data quality
@@ -242,293 +273,77 @@ class NWSStationsSyncAdapter:
             if len(observations) > 0:
                 completeness = len(temps) / len(observations) * 100
                 logger.info(
-                    f"📊 Qualidade: {len(temps)}/{len(observations)} "
+                    f"Quality: {len(temps)}/{len(observations)} "
                     f"({completeness:.1f}%) "
-                    f"temperaturas válidas"
+                    f"valid temperatures"
                 )
             else:
-                logger.warning(
-                    "⚠️  Nenhuma observação disponível após filtragem"
-                )
+                logger.warning("No observations available after filtering")
                 return []
 
-            # 4. Agregar observações em diários usando pandas
-            daily_data = self._aggregate_hourly_to_daily_pandas(observations)
+            # 5. Aggregate observations to daily using client's built-in method
+            daily_data = client.aggregate_to_daily(observations, station)
+
+            # Convert DailyEToData to DailyNWSData format
+            daily_nws_data = [
+                DailyNWSData(
+                    date=d.date,
+                    temp_min=d.T_min,
+                    temp_max=d.T_max,
+                    temp_mean=d.T_mean,
+                    humidity=d.RH_mean,
+                    wind_speed=d.wind_2m_mean_ms,
+                )
+                for d in daily_data
+            ]
 
             logger.info(
-                f"✅ NWS sync: {len(daily_data)} dias agregados "
-                f"(de {len(observations)} observações)"
+                f"NWS sync: {len(daily_nws_data)} days aggregated "
+                f"(from {len(observations)} observations)"
             )
 
-            return daily_data
+            return daily_nws_data
 
         except Exception as e:
-            logger.error(f"❌ Erro ao buscar dados NWS: {e}")
+            logger.error(f"Error fetching NWS data: {e}")
             raise
 
         finally:
             await client.close()
 
-    def _aggregate_hourly_to_daily_pandas(
-        self, hourly_data: list
-    ) -> list[DailyNWSData]:
-        """
-        Agrupa observações horárias em diários usando pandas.
-
-        Usa DataFrame.resample('D') para agregação eficiente.
-
-        Calcula:
-        - temp_min: mínimo do dia
-        - temp_max: máximo do dia
-        - temp_mean: média aritmética
-        - humidity: média
-        - wind_speed: média a 2m (convertido para FAO-56 PM)
-        - solar_radiation: 0 (NWS não fornece)
-        - precipitation: soma do dia
-
-        Args:
-            hourly_data: Lista de NWSObservation
-
-        Returns:
-            List[DailyNWSData]: Dados agregados por dia
-        """
-        if not hourly_data:
-            return []
-
-        # Converter para DataFrame pandas
-        df_data = []
-        for obs in hourly_data:
-            df_data.append(
-                {
-                    "timestamp": obs.timestamp,
-                    "temp_celsius": obs.temp_celsius,
-                    "humidity_percent": obs.humidity_percent,
-                    "wind_speed_2m_ms": obs.wind_speed_2m_ms,
-                    "precipitation_1h_mm": obs.precipitation_1h_mm or 0.0,
-                }
-            )
-
-        df = pd.DataFrame(df_data)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df.set_index("timestamp", inplace=True)
-
-        # Agregar por dia usando resample
-        daily = df.resample("D").agg(
-            {
-                "temp_celsius": ["min", "max", "mean"],
-                "humidity_percent": "mean",
-                "wind_speed_2m_ms": "mean",
-                "precipitation_1h_mm": "sum",
-            }
-        )
-
-        # Flatten multi-index columns
-        daily.columns = [
-            "_".join(col).strip("_") if col[1] else col[0]
-            for col in daily.columns
-        ]
-
-        # Converter para DailyNWSData
-        daily_results = []
-        for date_idx, row in daily.iterrows():
-            # Converter índice para datetime python
-            # type: ignore - pandas retorna Timestamp que tem to_pydatetime()
-            date_dt = date_idx.to_pydatetime()  # type: ignore[attr-defined]
-
-            daily_record = DailyNWSData(
-                date=date_dt,
-                temp_min=row.get("temp_celsius_min"),
-                temp_max=row.get("temp_celsius_max"),
-                temp_mean=row.get("temp_celsius_mean"),
-                humidity=row.get("humidity_percent"),
-                wind_speed=row.get("wind_speed_2m_ms"),
-                solar_radiation=0.0,  # NWS não fornece radiação solar
-                precipitation=(
-                    row.get("precipitation_1h_mm")
-                    if row.get("precipitation_1h_mm", 0) > 0
-                    else None
-                ),
-            )
-            daily_results.append(daily_record)
-
-        logger.debug(f"Agregados {len(daily_results)} dias usando pandas")
-        return daily_results
-
-    def _aggregate_hourly_to_daily(
-        self, hourly_data: list
-    ) -> list[DailyNWSData]:
-        """
-        Agrupa observações horárias em diários.
-
-        Calcula:
-        - temp_min: mínimo do dia
-        - temp_max: máximo do dia
-        - temp_mean: média aritmética
-        - humidity: média
-        - wind_speed: média
-        - solar_radiation: 0 (NWS não fornece)
-        - precipitation: soma do dia
-
-        Args:
-            hourly_data: Lista de NWSObservation
-
-        Returns:
-            List[DailyNWSData]: Dados agregados por dia
-        """
-        if not hourly_data:
-            return []
-
-        # Agrupar por dia
-        daily_groups = {}
-
-        for record in hourly_data:
-            try:
-                # Parse timestamp (ISO 8601)
-                if isinstance(record.timestamp, str):
-                    dt = datetime.fromisoformat(
-                        record.timestamp.replace("Z", "+00:00")
-                    )
-                else:
-                    dt = record.timestamp
-
-                date_key = dt.date()
-
-                if date_key not in daily_groups:
-                    daily_groups[date_key] = {
-                        "temps": [],
-                        "humidities": [],
-                        "wind_speeds": [],
-                        "precip_sum": 0.0,
-                        "date": dt,
-                    }
-
-                # Coletar valores (se não None)
-                if record.temp_celsius is not None:
-                    daily_groups[date_key]["temps"].append(record.temp_celsius)
-
-                if record.humidity_percent is not None:
-                    daily_groups[date_key]["humidities"].append(
-                        record.humidity_percent
-                    )
-
-                # Usar vento a 2m (convertido para FAO-56 PM)
-                if record.wind_speed_2m_ms is not None:
-                    daily_groups[date_key]["wind_speeds"].append(
-                        record.wind_speed_2m_ms
-                    )
-
-                if record.precipitation_1h_mm is not None:
-                    daily_groups[date_key][
-                        "precip_sum"
-                    ] += record.precipitation_1h_mm
-
-            except Exception as e:
-                logger.warning(f"⚠️  Erro ao processar registro horário: {e}")
-                continue
-
-        # Calcular agregações
-        daily_results = []
-
-        for date_key in sorted(daily_groups.keys()):
-            group = daily_groups[date_key]
-
-            # Calcular stats
-            temps = group["temps"]
-            humidities = group["humidities"]
-            wind_speeds = group["wind_speeds"]
-            precip = group["precip_sum"]
-
-            temp_min = min(temps) if temps else None
-            temp_max = max(temps) if temps else None
-            temp_mean = sum(temps) / len(temps) if temps else None
-            humidity_mean = (
-                sum(humidities) / len(humidities) if humidities else None
-            )
-            wind_mean = (
-                sum(wind_speeds) / len(wind_speeds) if wind_speeds else None
-            )
-
-            daily_record = DailyNWSData(
-                date=date_key,
-                temp_min=temp_min,
-                temp_max=temp_max,
-                temp_mean=temp_mean,
-                humidity=humidity_mean,
-                wind_speed=wind_mean,
-                solar_radiation=0.0,  # NWS não fornece radiação solar
-                precipitation=precip if precip > 0 else None,
-            )
-
-            daily_results.append(daily_record)
-
-        logger.debug(f"Agregados {len(daily_groups)} dias de dados NWS")
-
-        return daily_results
-
     def health_check_sync(self) -> bool:
         """
-        Health check síncrono.
+        Synchronous health check.
 
-        Testa conectividade com NWS API.
+        Tests connectivity with NWS API.
 
         Returns:
-            bool: True se API está acessível
+            bool: True if API is accessible
         """
         return asyncio.run(self._async_health_check())
 
     async def _async_health_check(self) -> bool:
         """
-        Health check assíncrono interno.
+        Internal asynchronous health check.
 
-        Testa com coordenadas padrão (NYC).
+        Tests with default coordinates (NYC).
         """
         client = NWSStationsClient(config=self.config, cache=self.cache)
 
         try:
-            # Teste com NYC (sempre em cobertura)
-            stations = await client.find_nearest_stations(
-                lat=40.7128, lon=-74.0060, limit=1
+            # Test with NYC (always in coverage)
+            station = await client.find_nearest_active_station(
+                lat=40.7128, lon=-74.0060, max_candidates=1
             )
 
-            is_healthy = len(stations) > 0
-            status_icon = "✅ OK" if is_healthy else "❌ FAIL"
-            logger.info(f"🏥 NWS health check: {status_icon}")
+            is_healthy = station is not None
+            status_icon = "OK" if is_healthy else "FAIL"
+            logger.info(f"NWS health check: {status_icon}")
             return is_healthy
 
         except Exception as e:
-            logger.error(f"🏥 NWS health check failed: {e}")
+            logger.error(f"NWS health check failed: {e}")
             return False
 
         finally:
             await client.close()
-
-
-# Exemplo de uso
-def example_sync_usage():
-    """Demonstra uso síncrono do adapter."""
-    adapter = NWSStationsSyncAdapter()
-
-    try:
-        # Buscar dados para NYC (código síncrono!)
-        data = adapter.get_daily_data_sync(
-            lat=40.7128,
-            lon=-74.0060,
-            start_date=datetime.now(),
-            end_date=datetime.now() + timedelta(days=5),
-        )
-
-        print(f"✅ NWS: {len(data)} dias obtidos")
-        for record in data[:3]:  # Primeiros 3 dias
-            print(
-                f"  {record.date}: "
-                f"T={record.temp_mean}°C "
-                f"(min={record.temp_min}, max={record.temp_max}), "
-                f"RH={record.humidity}%, "
-                f"Wind={record.wind_speed}m/s"
-            )
-    except Exception as e:
-        print(f"❌ Erro: {e}")
-
-
-if __name__ == "__main__":
-    example_sync_usage()

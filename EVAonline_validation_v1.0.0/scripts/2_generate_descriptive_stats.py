@@ -58,6 +58,12 @@ def convert_wind_speed_2m(
         Crop evapotranspiration - Guidelines for computing crop water
         requirements. FAO Irrigation and drainage paper 56, Eq. 47.
 
+    Note:
+        For NWS Stations API integration, see the optimized implementation
+        in scripts/api/services/nws_stations/nws_stations_client.py:
+        - NWSStationsClient.convert_wind_to_2m() (scalar version)
+        - NWSStationsClient._extract_wind_speed_ms() (km/h → m/s)
+
     Example:
         > ws_2m = convert_wind_speed_2m(ws_10m, height=10.0)
         # Converts from 10m to 2m using logarithmic profile

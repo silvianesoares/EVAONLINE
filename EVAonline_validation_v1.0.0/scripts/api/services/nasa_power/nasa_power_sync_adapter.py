@@ -1,7 +1,7 @@
 """
 NASA POWER Sync Adapter - Synchronous wrapper for async client.
 
-Este adapter permite usar o cliente assíncrono NASA POWER em código síncrono
+This adapter allows using the asynchronous NASA POWER client in synchronous code
 (Celery tasks, sync endpoints).
 """
 
@@ -16,18 +16,18 @@ from .nasa_power_client import NASAPowerClient, NASAPowerConfig, NASAPowerData
 
 class NASAPowerSyncAdapter:
     """
-    Adapter síncrono para NASAPowerClient assíncrono.
+    Synchronous adapter for asynchronous NASAPowerClient.
     """
 
     def __init__(
         self, config: NASAPowerConfig | None = None, cache: Any | None = None
     ):
         """
-        Inicializa adapter.
+        Initialize adapter.
 
         Args:
-            config: Configuração NASA POWER (opcional)
-            cache: Cache service (opcional)
+            config: NASA POWER configuration (optional)
+            cache: Cache service (optional)
         """
         self.config = config or NASAPowerConfig()
         self.cache = cache
@@ -42,17 +42,17 @@ class NASAPowerSyncAdapter:
         community: str = "AG",
     ) -> list[NASAPowerData]:
         """
-        Baixa dados NASA POWER de forma SÍNCRONA.
+        Download NASA POWER data SYNCHRONOUSLY.
 
         Args:
-            lat: Latitude (-90 a 90)
-            lon: Longitude (-180 a 180)
-            start_date: Data inicial
-            end_date: Data final
-            community: Comunidade NASA ('AG' para Agronomia)
+            lat: Latitude (-90 to 90)
+            lon: Longitude (-180 to 180)
+            start_date: Start date
+            end_date: End date
+            community: NASA community ('AG' for Agronomy)
 
         Returns:
-            Lista de dados diários
+            List of daily data
 
         Example:
             >>> adapter = NASAPowerSyncAdapter()
@@ -81,9 +81,9 @@ class NASAPowerSyncAdapter:
         community: str,
     ) -> list[NASAPowerData]:
         """
-        Método assíncrono interno.
+        Internal asynchronous method.
 
-        Cria cliente, faz requisição, fecha conexão.
+        Creates client, makes request, closes connection.
         """
         client = NASAPowerClient(config=self.config, cache=self.cache)
 
@@ -96,7 +96,7 @@ class NASAPowerSyncAdapter:
                 community=community,
             )
 
-            logger.info(f"✅ NASA POWER sync: {len(data)} registros obtidos")
+            logger.info(f"NASA POWER sync: {len(data)} records retrieved")
             return data
 
         finally:
@@ -104,24 +104,24 @@ class NASAPowerSyncAdapter:
 
     def health_check_sync(self) -> bool:
         """
-        Health check síncrono.
+        Synchronous health check.
 
         Returns:
-            bool: True se API está acessível
+            bool: True if API is accessible
         """
         try:
-            # Verificar se já há event loop rodando
+            # Check if event loop is already running
             asyncio.get_running_loop()
             import nest_asyncio
 
             nest_asyncio.apply()
             return asyncio.run(self._async_health_check())
         except RuntimeError:
-            # Não há loop rodando
+            # No loop running
             return asyncio.run(self._async_health_check())
 
     async def _async_health_check(self) -> bool:
-        """Health check assíncrono interno."""
+        """Internal asynchronous health check."""
         client = NASAPowerClient(config=self.config, cache=self.cache)
 
         try:
@@ -132,10 +132,10 @@ class NASAPowerSyncAdapter:
     @staticmethod
     def get_info() -> dict[str, Any]:
         """
-        Retorna metadados da fonte NASA POWER.
+        Return NASA POWER source metadata.
 
         Returns:
-            Dicionário com metadados completos da fonte
+            Dictionary with complete source metadata
         """
         return {
             "api": "NASA POWER",

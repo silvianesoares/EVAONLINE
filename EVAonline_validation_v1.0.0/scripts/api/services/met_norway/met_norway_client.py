@@ -1,6 +1,6 @@
 """
 MET Norway Locationforecast 2.0 Client with hourly-to-daily aggregation.
-Usar somente "MET Norway" para MET Norway LocationForecast 2.0.
+Use only "MET Norway" when referring to MET Norway LocationForecast 2.0.
 
 Documentation:
 - https://api.met.no/weatherapi/locationforecast/2.0/documentation
@@ -37,19 +37,19 @@ import httpx
 from loguru import logger
 from pydantic import BaseModel, Field
 
-# Import para detecção regional (fonte única)
+# Import for regional detection (single source of truth)
 from scripts.api.services.geographic_utils import (
     GeographicUtils,
     validate_coordinates,
 )
 from scripts.api.services.weather_utils import (
-    METNorwayAggregationUtils,  # Movido de aqui para weather_utils
+    METNorwayAggregationUtils,  # Moved from here to weather_utils
     WeatherConversionUtils,
-    CacheUtils,  # Utilitários de cache
+    CacheUtils,  # Cache utilities
 )
 
 
-# Pydantic model (definido no topo para evitar forward references)
+# Pydantic model (defined at top to avoid forward references)
 class METNorwayDailyData(BaseModel):
     """Daily aggregated data from MET Norway API.
 
@@ -153,7 +153,7 @@ class METNorwayCacheMetadata(BaseModel):
         ..., description="Cached forecast data"
     )
 
-    # Método para serialização JSON (para Redis)
+    # Method for JSON serialization (for Redis)
     def to_json(self) -> str:
         return self.model_dump_json()  # Pydantic v2
 
@@ -224,7 +224,7 @@ class METNorwayClient:
             "Accept": "application/json",
         }
 
-        # Rate limiting usando valores configurados
+        # Rate limiting using configured values
         limits = httpx.Limits(
             max_keepalive_connections=self.config.max_keepalive_connections,
             max_connections=self.config.max_connections,
@@ -280,7 +280,7 @@ class METNorwayClient:
             True if in Nordic region (high quality), False otherwise
         """
         in_nordic = GeographicUtils.is_in_nordic(lat, lon)
-        # Log bbox para debug (útil em PostGIS queries)
+        # Log bbox for debugging (useful in PostGIS queries)
         logger.debug(
             f"Nordic check ({lat}, {lon}): {in_nordic} "
             f"(bbox: {GeographicUtils.NORDIC_BBOX})"
@@ -305,13 +305,13 @@ class METNorwayClient:
         """
         if cls.is_in_nordic_region(lat, lon):
             logger.debug(
-                f"📍 Location ({lat}, {lon}) in NORDIC region: "
+                f"Location ({lat}, {lon}) in NORDIC region: "
                 f"Using high-quality precipitation (1km + radar)"
             )
             return cls.NORDIC_VARIABLES
         else:
             logger.debug(
-                f"📍 Location ({lat}, {lon}) OUTSIDE Nordic region: "
+                f"Location ({lat}, {lon}) OUTSIDE Nordic region: "
                 f"Skipping precipitation (use Open-Meteo)"
             )
             return cls.GLOBAL_VARIABLES
@@ -361,7 +361,7 @@ class METNorwayClient:
         Raises:
             ValueError: Invalid coordinates or date range exceeds 5-day limit
         """
-        # NOTE: Coordinate and date validation should happen
+        # Coordinate and date validation should happen
         # in climate_validation.py + climate_source_availability.py
         # BEFORE calling this client. This method assumes pre-validated data.
 
@@ -386,7 +386,7 @@ class METNorwayClient:
             original_end = end_date
             end_date = start_date + timedelta(days=5)
             logger.warning(
-                f"⚠️ Forecast limitado a 5 dias: "
+                f"Forecast limitado a 5 dias: "
                 f"{delta_days} dias solicitados → ajustado para 5 dias "
                 f"(era: {original_end.date()}, agora: {end_date.date()})"
             )
@@ -400,7 +400,7 @@ class METNorwayClient:
         region_label = "NORDIC (1km)" if in_nordic else "GLOBAL (9km)"
 
         logger.info(
-            f"📍 MET Norway ({region_label}): "
+            f"MET Norway ({region_label}): "
             f"lat={lat}, lon={lon}, altitude={altitude}m, "
             f"variables={len(variables)}"
         )
@@ -416,7 +416,7 @@ class METNorwayClient:
         # 1. Check cache and expiration
         last_modified = None
         if self.cache:
-            # Assuma cache.get retorna JSON; parse para model
+            # Assume cache.get returns JSON; parse to model
             cached_json = await self.cache.get(cache_metadata_key)
             if cached_json:
                 try:
@@ -429,9 +429,7 @@ class METNorwayClient:
                         and datetime.now(cached_metadata.expires.tzinfo)
                         < cached_metadata.expires
                     ):
-                        logger.info(
-                            "🎯 Cache HIT (not expired): " "MET Norway"
-                        )
+                        logger.info("Cache HIT (not expired): MET Norway")
                         return cached_metadata.data
 
                     # Data expired - try conditional request with
@@ -451,7 +449,7 @@ class METNorwayClient:
         # 2. Fetch from API (with conditional request if possible)
         logger.info("Querying MET Norway API...")
 
-        # Endpoint completo: base_url + /complete
+        # Complete endpoint: base_url + /complete
         endpoint = f"{self.config.base_url}/complete"
 
         # Request parameters
@@ -460,9 +458,7 @@ class METNorwayClient:
             "lon": lon,
         }
         if altitude is not None:
-            params["altitude"] = (
-                altitude  # [MELHORIA] Adiciona altitude se fornecido
-            )
+            params["altitude"] = altitude  # Add altitude if provided
         if timezone:
             params["timezone"] = timezone
             logger.warning(
@@ -491,7 +487,7 @@ class METNorwayClient:
 
                 # Handle 304 Not Modified
                 if response.status_code == 304:
-                    logger.info("✅ 304 Not Modified: Using cached data")
+                    logger.info("304 Not Modified: Using cached data")
                     if self.cache:
                         cached_json = await self.cache.get(cache_metadata_key)
                         if cached_json:
@@ -506,7 +502,7 @@ class METNorwayClient:
                                     "Expires"
                                 )
                                 if expires_header:
-                                    # Usar CacheUtils
+                                    # Use CacheUtils
                                     new_expires = (
                                         CacheUtils.parse_rfc1123_date(
                                             expires_header
@@ -531,7 +527,7 @@ class METNorwayClient:
                 # Handle 203 Non-Authoritative (deprecated/beta)
                 if response.status_code == 203:
                     logger.warning(
-                        "⚠️ 203 Non-Authoritative Information: "
+                        "203 Non-Authoritative Information: "
                         "This product version is deprecated or in beta. "
                         "Check documentation for updates."
                     )
@@ -540,7 +536,7 @@ class METNorwayClient:
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After", "60")
                     logger.error(
-                        f"❌ 429 Too Many Requests: Rate limit exceeded. "
+                        f"429 Too Many Requests: Rate limit exceeded. "
                         f"Retry after {retry_after}s. "
                         f"Consider reducing request frequency."
                     )
@@ -562,7 +558,7 @@ class METNorwayClient:
                     f"Expires: {expires_header}"
                 )
 
-                # Parse expires timestamp usando CacheUtils
+                # Parse expires timestamp using CacheUtils
                 expires_dt = CacheUtils.parse_rfc1123_date(expires_header)
 
                 # Process response
@@ -584,7 +580,7 @@ class METNorwayClient:
                         data=parsed_data,
                     )
 
-                    # Calculate TTL from Expires header usando CacheUtils
+                    # Calculate TTL from Expires header using CacheUtils
                     ttl = CacheUtils.calculate_cache_ttl(expires_dt)
 
                     # Save to cache
@@ -629,7 +625,7 @@ class METNorwayClient:
         end_date: datetime,
     ) -> list[METNorwayDailyData]:
         """
-        Process MET Norway API response usando METNorwayAggregator.
+        Process MET Norway API response using METNorwayAggregator.
 
         Args:
             data: API response JSON
@@ -664,24 +660,24 @@ class METNorwayClient:
                 logger.warning("MET Norway: no data")
                 return []
 
-            # Usar METNorwayAggregationUtils de weather_utils
+            # Use METNorwayAggregationUtils from weather_utils
             aggregator = METNorwayAggregationUtils()
 
-            # 1. Agregar dados horários em diários
+            # 1. Aggregate hourly data to daily
             daily_raw_data = aggregator.aggregate_hourly_to_daily(
                 timeseries, start_date, end_date
             )
 
-            # 2. Calcular agregações finais
+            # 2. Calculate final aggregations
             daily_data = aggregator.calculate_daily_aggregations(
                 daily_raw_data, WeatherConversionUtils()
             )
 
-            # 3. Validar dados agregados
+            # 3. Validate aggregated data
             if not aggregator.validate_daily_data(daily_data):
-                logger.warning("Dados diários falharam na validação")
+                logger.warning("Daily data failed validation")
 
-            # Log padronizado
+            # Standardized logging
             self._log_fetch_summary(
                 len(daily_data), start_date, end_date, len(timeseries)
             )
@@ -689,7 +685,7 @@ class METNorwayClient:
 
         except Exception as e:
             logger.error(
-                f"❌ Error processing MET Norway response: {e}",
+                f"Error processing MET Norway response: {e}",
                 exc_info=True,
             )
             msg = f"Invalid MET Norway response: {e}"
@@ -703,7 +699,7 @@ class METNorwayClient:
         hourly_entries: int = 0,
     ):
         """
-        Log padronizado para fetches.
+        Standardized logging for fetches.
 
         Args:
             days_count: Número de dias retornados
@@ -737,10 +733,10 @@ class METNorwayClient:
             True if API responds successfully, False otherwise
         """
         try:
-            # Use endpoint completo e params mínimos
+            # Use complete endpoint with minimal params
             endpoint = f"{self.config.base_url}/complete"
             params: dict[str, float | str] = {
-                "lat": -15.7939,  # Brasília
+                "lat": -15.7939,  # Brasilia
                 "lon": -47.8828,
             }
 
@@ -823,7 +819,7 @@ class METNorwayClient:
         return {
             "data_start_date": None,  # Forecast only
             "max_historical_years": 0,
-            "forecast_horizon_days": 9,  # [MELHORIA] Atualizado para 9
+            "forecast_horizon_days": 9,  # Updated to 9 days
             "description": "Forecast data only, global coverage",
             "coverage": "Global",
             "update_frequency": "Every 6 hours",

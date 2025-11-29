@@ -1130,7 +1130,7 @@ class NWSForecastClient:
         return daily_data
 
     async def health_check(self) -> dict[str, Any]:
-        """Health check da API NWS."""
+        """Health check for NWS API."""
         try:
             response = await self.client.get("/")
             response.raise_for_status()

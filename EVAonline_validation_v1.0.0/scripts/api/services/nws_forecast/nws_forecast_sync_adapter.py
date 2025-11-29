@@ -1,14 +1,14 @@
 """
 NWS Forecast Daily Sync Adapter
 
-Adapter sincrono para nws_forecast_client.py (cliente assincrono).
-Converte dados horarios do NWS Forecast em dados diarios agregados.
+Synchronous adapter for nws_forecast_client.py (asynchronous client).
+Converts hourly NWS Forecast data to aggregated daily data.
 
-Este adapter:
-- Wraps o NWSForecastClient assincrono em interface sincrona
-- Gerencia event loop automaticamente
-- Converte dados horarios em agregacoes diarias usando pandas
-- Mantém compatibilidade com codigo sincrono existente
+This adapter:
+- Wraps the asynchronous NWSForecastClient in a synchronous interface
+- Manages event loop automatically
+- Converts hourly data to daily aggregations using pandas
+- Maintains compatibility with existing synchronous code
 
 Coverage: USA Continental (-125°W to -66°W, 24°N to 49°N)
 Extended: Alaska/Hawaii (18°N to 71°N)
@@ -17,8 +17,8 @@ License: US Government Public Domain
 API Documentation: https://www.weather.gov/documentation/services-web-api
 
 Related Files:
-- nws_forecast_client.py: Cliente assincrono (base)
-- nws_stations_sync_adapter.py: Adapter para estacoes/observacoes
+- nws_forecast_client.py: Asynchronous client (base)
+- nws_stations_sync_adapter.py: Adapter for stations/observations
 """
 
 import asyncio
@@ -35,24 +35,24 @@ from .nws_forecast_client import (
 
 class NWSDailyForecastRecord(BaseModel):
     """
-    Registro diário de dados NWS Forecast.
+    Daily record of NWS Forecast data.
 
-    Formato de saida do adapter para compatibilidade com
-    sistemas existentes que esperam dados diarios.
+    Output format of the adapter for compatibility with
+    existing systems that expect daily data.
 
     Attributes:
-        date: Data no formato YYYY-MM-DD (string)
-        temp_max: Temperatura maxima (°C) - oficial NWS
-        temp_min: Temperatura minima (°C) - oficial NWS
-        temp_mean: Temperatura media (°C)
-        humidity_mean: Umidade relativa media (%)
-        wind_speed_mean: Velocidade media do vento a 2m (m/s) - FAO-56
-        dewpoint_mean: Ponto de orvalho medio (°C) - para ETo
-        pressure_mean: Pressao atmosferica media (hPa) - para ETo
-        solar_radiation: Radiacao solar (MJ/m²/dia) - USA-ASOS calibrado
-        precipitation_sum: Precipitacao total (mm) - ESTIMATIVA
-        precipitation_probability: Probabilidade media de precipitacao (%)
-        short_forecast: Previsao textual curta
+        date: Date in YYYY-MM-DD format (string)
+        temp_max: Maximum temperature (°C) - official NWS
+        temp_min: Minimum temperature (°C) - official NWS
+        temp_mean: Mean temperature (°C)
+        humidity_mean: Mean relative humidity (%)
+        wind_speed_mean: Mean wind speed at 2m (m/s) - FAO-56
+        dewpoint_mean: Mean dewpoint (°C) - for ETo
+        pressure_mean: Mean atmospheric pressure (hPa) - for ETo
+        solar_radiation: Solar radiation (MJ/m²/day) - USA-ASOS calibrated
+        precipitation_sum: Total precipitation (mm) - ESTIMATE
+        precipitation_probability: Mean precipitation probability (%)
+        short_forecast: Short textual forecast
     """
 
     date: str
@@ -71,30 +71,30 @@ class NWSDailyForecastRecord(BaseModel):
 
 class NWSDailyForecastSyncAdapter:
     """
-    Adapter síncrono para NWS Forecast com agregação diária.
+    Synchronous adapter for NWS Forecast with daily aggregation.
 
-    Wrapper síncrono para NWSForecastClient (async) que já fornece
-    dados diários agregados com todas as variáveis ETo:
-    - Temperaturas oficiais NWS (max/min de períodos 12h/24h)
-    - Radiação solar (USA-ASOS calibrado com correção de vapor)
-    - Ponto de orvalho e pressão atmosférica
-    - Vento a 2m (FAO-56 convertido)
-    - Precipitação (estimativa, pode superestimar)
+    Synchronous wrapper for NWSForecastClient (async) that provides
+    aggregated daily data with all ETo variables:
+    - Official NWS temperatures (max/min from 12h/24h periods)
+    - Solar radiation (USA-ASOS calibrated with vapor correction)
+    - Dewpoint and atmospheric pressure
+    - Wind at 2m (FAO-56 converted)
+    - Precipitation (estimate, may overestimate)
 
-    Este adapter:
-        - Wraps NWSForecastClient (async) em interface síncrona
-        - Cria/reusa event loop conforme necessário
-        - Usa get_daily_forecast_data() do client (sem pandas)
-        - Filtra dados por período solicitado
-        - Remove timezone para compatibilidade com datas naive
+    This adapter:
+        - Wraps NWSForecastClient (async) in synchronous interface
+        - Creates/reuses event loop as needed
+        - Uses get_daily_forecast_data() from client (no pandas)
+        - Filters data by requested period
+        - Removes timezone for compatibility with naive dates
 
-    Métodos:
-        - health_check_sync(): Verifica disponibilidade da API
-        - get_daily_data_sync(): Obtém dados diários agregados
-        - get_attribution(): Retorna informações de atribuição
-        - get_info(): Informações gerais da API
+    Methods:
+        - health_check_sync(): Check API availability
+        - get_daily_data_sync(): Get aggregated daily data
+        - get_attribution(): Return attribution information
+        - get_info(): General API information
 
-    Exemplo:
+    Example:
         adapter = NWSDailyForecastSyncAdapter()
         if adapter.health_check_sync():
             data = adapter.get_daily_data_sync(
@@ -105,23 +105,23 @@ class NWSDailyForecastSyncAdapter:
     """
 
     def __init__(self):
-        """Inicializar adapter com cliente NWS assincrono."""
+        """Initialize adapter with asynchronous NWS client."""
         self.client = create_nws_forecast_client()
 
     def health_check_sync(self) -> bool:
         """
-        Verificar se NWS API está acessível (sincrono).
+        Check if NWS API is accessible (synchronous).
 
-        Cria event loop se necessário e executa health check
-        do cliente assincrono de forma bloqueante.
+        Creates event loop if necessary and executes health check
+        of asynchronous client in blocking manner.
 
         Returns:
-            bool: True se API está funcionando, False caso contrário
+            bool: True if API is working, False otherwise
 
-        Exemplo:
+        Example:
             adapter = NWSDailyForecastSyncAdapter()
             if adapter.health_check_sync():
-                print("NWS API disponível")
+                print("NWS API available")
         """
 
         async def _health_check_async():
@@ -133,7 +133,7 @@ class NWSDailyForecastSyncAdapter:
                 await client.close()
 
         try:
-            # Sempre criar novo event loop para evitar conflitos
+            # Always create new event loop to avoid conflicts
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
@@ -148,29 +148,29 @@ class NWSDailyForecastSyncAdapter:
         self, lat: float, lon: float, start_date: datetime, end_date: datetime
     ) -> List[NWSDailyForecastRecord]:
         """
-        Obter dados diários agregados de forma assíncrona.
+        Get aggregated daily data asynchronously.
 
-        Agora usa get_daily_forecast_data() do client que já retorna
-        dados agregados com todas as variáveis ETo incluindo:
-        - Temperaturas oficiais NWS (max/min de períodos 12h/24h)
-        - Radiação solar estimada (método USA-ASOS calibrado)
-        - Ponto de orvalho e pressão atmosférica
-        - Vento a 2m (FAO-56 convertido)
+        Now uses get_daily_forecast_data() from client which already returns
+        aggregated data with all ETo variables including:
+        - Official NWS temperatures (max/min from 12h/24h periods)
+        - Estimated solar radiation (USA-ASOS calibrated method)
+        - Dewpoint and atmospheric pressure
+        - Wind at 2m (FAO-56 converted)
         """
-        # Criar novo client para este request (evita conflitos de loop)
+        # Create new client for this request (avoids loop conflicts)
         client = create_nws_forecast_client()
         try:
-            # Client já retorna dados diários agregados!
+            # Client already returns aggregated daily data!
             daily_forecast = await client.get_daily_forecast_data(lat, lon)
 
             if not daily_forecast:
-                logger.warning(f"Nenhum dado de forecast para ({lat}, {lon})")
+                logger.warning(f"No forecast data for ({lat}, {lon})")
                 return []
 
-            # Filtrar período solicitado
+            # Filter requested period
             filtered_data = []
             for day in daily_forecast:
-                # Remover timezone para comparação
+                # Remove timezone for comparison
                 day_date = day.date.replace(tzinfo=None)
 
                 if start_date.date() <= day_date.date() <= end_date.date():
@@ -193,8 +193,8 @@ class NWSDailyForecastSyncAdapter:
                     filtered_data.append(record)
 
             logger.info(
-                f"NWS Forecast: {len(filtered_data)} dias no período "
-                f"solicitado para ({lat}, {lon})"
+                f"NWS Forecast: {len(filtered_data)} days in requested "
+                f"period for ({lat}, {lon})"
             )
 
             return filtered_data
@@ -203,39 +203,39 @@ class NWSDailyForecastSyncAdapter:
             # Re-raise validation errors (coverage, dates, etc)
             raise
         except Exception as e:
-            logger.error(f"Erro ao processar dados NWS Forecast: {e}")
+            logger.error(f"Error processing NWS Forecast data: {e}")
             return []
         finally:
-            # Fechar client para liberar recursos
+            # Close client to release resources
             await client.close()
 
     def get_daily_data_sync(
         self, lat: float, lon: float, start_date: datetime, end_date: datetime
     ) -> List[NWSDailyForecastRecord]:
         """
-        Wrapper síncrono para obter dados diários agregados.
-        Compatível com Celery (não-async).
+        Synchronous wrapper to get aggregated daily data.
+        Compatible with Celery (non-async).
 
-        Retorna dados diários com TODAS as variáveis para ETo:
-        - Temperaturas oficiais NWS (max/min/mean)
-        - Umidade relativa média
-        - Vento médio a 2m (FAO-56)
-        - Ponto de orvalho médio
-        - Pressão atmosférica média
-        - Radiação solar (USA-ASOS calibrado)
-        - Precipitação total (estimativa)
+        Returns daily data with ALL variables for ETo:
+        - Official NWS temperatures (max/min/mean)
+        - Mean relative humidity
+        - Mean wind at 2m (FAO-56)
+        - Mean dewpoint
+        - Mean atmospheric pressure
+        - Solar radiation (USA-ASOS calibrated)
+        - Total precipitation (estimate)
 
         Args:
-            lat: Latitude do ponto
-            lon: Longitude do ponto
-            start_date: Data inicial
-            end_date: Data final
+            lat: Point latitude
+            lon: Point longitude
+            start_date: Start date
+            end_date: End date
 
         Returns:
-            Lista de registros diários agregados com variáveis ETo
+            List of aggregated daily records with ETo variables
         """
         try:
-            # Criar novo event loop (evita "Event loop is closed")
+            # Create new event loop (avoids "Event loop is closed")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
@@ -244,7 +244,7 @@ class NWSDailyForecastSyncAdapter:
                 )
                 return result
             finally:
-                # Garantir limpeza do loop
+                # Ensure loop cleanup
                 loop.close()
         except Exception as e:
             logger.error(f"NWS Forecast sync wrapper failed: {e}")
@@ -252,10 +252,10 @@ class NWSDailyForecastSyncAdapter:
 
     def get_attribution(self) -> str:
         """
-        Retorna texto de atribuição dos dados NWS.
+        Return NWS data attribution text.
 
         Returns:
-            str: Texto formatado com informações de atribuição
+            str: Formatted text with attribution information
         """
         attr = self.client.get_attribution()
         return (

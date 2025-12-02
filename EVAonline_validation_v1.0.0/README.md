@@ -190,18 +190,18 @@ EVAonline_validation_v1.0.0/
 
 ---
 
-## 📊 Data Sources
+## 📊 Original data sources
 
 ### Overview
 
 | Source | Resolution | Period | Latency | Purpose |
 |--------|-----------|--------|---------|---------|
-| **Xavier BR-DWGD** | 0.1° (~10 km) | 1961-2024 | 6-12 months | Reference ✅ |
+| **Xavier BR-DWGD** | 0.1° (~10 km) | 1961-2024 | - | Reference ✅ |
 | **NASA POWER** | 0.5° × 0.625° (~55 km) | 1981-present | 5-7 days | Global reanalysis (validation) |
-| **Open-Meteo Archive** | 0.1° (~10 km) | 1940-present | 5-7 days | High-res reanalysis (validation) |
-| **Open-Meteo Forecast** | 0.1° (~10 km) | 7-day forecast | Real-time | Global forecast |
-| **Met Norway** | ~1 km | 10-day forecast | Real-time | Regional (Europe) |
-| **NWS USA** | Station/grid | 7-day forecast | Real-time | Regional (USA) |
+| **Open-Meteo Archive** | 0.1° (~10 km) | 1940-present | 2-3 days | High-res reanalysis (validation) |
+| **Open-Meteo Forecast** | 0.1° (~10 km) | 16-day forecast | Real-time | Global forecast |
+| **Met Norway** | ~1 km | 9-day forecast | Real-time | Regional (Europe) |
+| **NWS USA** | Station/grid | 1-day forecast | Real-time | Regional (USA) |
 | **EVAonline** | Multi-resolution | 1990-present | Real-time | Kalman fusion ⭐ |
 
 ### Key Technical Details
@@ -286,7 +286,7 @@ jupyter notebook complete_validation_analysis.ipynb
   - Performance ranking tables
   - Complete CSV exports for further analysis
 
-### Option 2: Python Scripts (Advanced)
+### Option 2: Python Scripts
 
 **For batch processing or automation:**
 

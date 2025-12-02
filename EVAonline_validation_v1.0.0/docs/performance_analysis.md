@@ -102,7 +102,7 @@ EVAOnline's **KGE = 0.814** demonstrates **very good performance**:
 - **Components**:
   - Correlation (r): 0.833 (very high)
   - Bias ratio (β): 1.007 (near-perfect)
-  - Variability ratio (γ): 0.978 (excellent)
+  - Variability ratio (γ): 0.978 (good)
 
 ### PBIAS (Percent Bias)
 
@@ -110,7 +110,7 @@ EVAOnline's **KGE = 0.814** demonstrates **very good performance**:
 
 - **Ideal range**: ±5% (very good)
 - **Acceptable range**: ±10% (good)
-- **EVAonline**: +0.71% (excellent)
+- **EVAonline**: +0.71% (good)
 
 **Interpretation**: EVAonline slightly overestimates ETo by 0.71% on average, which is negligible for practical applications.
 

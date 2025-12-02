@@ -17,7 +17,7 @@ EVAonline integrates **6 climate data sources** through modular API clients:
 | **NASA POWER** | Archive (MERRA-2) | 0.5° × 0.625° | Global, 1981-present | Historical ETo (validation) |
 | **Open-Meteo Archive** | Archive (ERA5-Land) | 0.1° × 0.1° | Global, 1940-present | Historical ETo (validation) |
 | **Open-Meteo Forecast** | Forecast (7-day) | 0.1° × 0.1° | Global | Short-term prediction |
-| **Met.no (Norway)** | Forecast (10-day) | High resolution | Norway/Nordic | Regional forecast |
+| **Met.no (Norway)** | Forecast (9-day) | High resolution | Norway/Nordic | Regional forecast |
 | **NWS Forecast** | Forecast (7-day) | Station-based | USA | Regional forecast (USA) |
 | **NWS Stations** | Observations | Station-based | USA | Real-time monitoring |
 
@@ -99,14 +99,12 @@ EVAonline integrates **6 climate data sources** through modular API clients:
 ### State-Space Model
 
 **State equation** (process model):
-$$
-x_t = A \cdot x_{t-1} + w_t
-$$
+
+$$x_t = A \cdot x_{t-1} + w_t$$
 
 **Measurement equation**:
-$$
-z_t = H \cdot x_t + v_t
-$$
+
+$$z_t = H \cdot x_t + v_t$$
 
 **Where**:
 - $x_t$ = true ETo at time $t$ (mm/day)
@@ -119,18 +117,20 @@ $$
 ### Kalman Filter Recursion
 
 **Prediction step**:
+
 $$
 \begin{aligned}
-\hat{x}_{t|t-1} &= A \cdot \hat{x}_{t-1|t-1} \\\\
+\hat{x}_{t|t-1} &= A \cdot \hat{x}_{t-1|t-1} \\\
 P_{t|t-1} &= A \cdot P_{t-1|t-1} \cdot A^T + Q
 \end{aligned}
 $$
 
 **Update step**:
+
 $$
 \begin{aligned}
-K_t &= P_{t|t-1} \cdot H^T \cdot (H \cdot P_{t|t-1} \cdot H^T + R)^{-1} \\\\
-\hat{x}_{t|t} &= \hat{x}_{t|t-1} + K_t \cdot (z_t - H \cdot \hat{x}_{t|t-1}) \\\\
+K_t &= P_{t|t-1} \cdot H^T \cdot (H \cdot P_{t|t-1} \cdot H^T + R)^{-1} \\\
+\hat{x}_{t|t} &= \hat{x}_{t|t-1} + K_t \cdot (z_t - H \cdot \hat{x}_{t|t-1}) \\\
 P_{t|t} &= (I - K_t \cdot H) \cdot P_{t|t-1}
 \end{aligned}
 $$

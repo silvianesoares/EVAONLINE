@@ -132,7 +132,7 @@ This document provides detailed technical specifications for all climate data so
 
 - **Endpoint**: https://api.open-meteo.com/v1/forecast
 - **Purpose**: Gap filling for recent data (last 2 days) and short-term forecast
-- **Coverage**: (today - 29 days) to (today + 5 days) = 35 days total
+- **Coverage**: (today) to (today + 5 days) = 6 days total
 
 ### Technical Details
 
@@ -142,14 +142,108 @@ This document provides detailed technical specifications for all climate data so
 
 ---
 
+## EVAonline Operation Modes
+
+EVAonline operates in **3 distinct modes**, each with specific temporal coverage rules and API combinations:
+
+### Mode 1: HISTORICAL_EMAIL (Historical Analysis)
+
+**Purpose**: Historical data analysis with flexible date selection  
+**Delivery**: Email export  
+**Period**: 1-90 days (user free choice)  
+**Restriction**: `end_date <= today - 29 days` (avoids overlap with dashboard)
+
+**Data Sources**:
+- **NASA POWER**: 1990-01-01 → today (no delay)
+- **Open-Meteo Archive**: 1990-01-01 → today - 2 days (2-day latency)
+
+**Use Cases**:
+- Long-term climatological studies
+- Seasonal analysis (any year since 1990)
+- Validation against ground stations
+- Historical ETo calculation for any period
+
+**Examples** (reference: Dec 1, 2025):
+- `2013-05-01 to 2013-07-29` ✅ (90 days, year 2013)
+- `2025-07-18 to 2025-10-15` ✅ (89 days, year 2025, ends before Nov 2)
+- `1990-01-01 to 1990-01-31` ✅ (31 days, earliest available)
+
+---
+
+### Mode 2: DASHBOARD_CURRENT (Recent Monitoring)
+
+**Purpose**: Recent data monitoring with predefined periods  
+**Interface**: Web dashboard with dropdown selection  
+**Periods**: 7, 14, 21, or 30 days  
+**Fixed End**: Always `today` (auto-updating)
+
+**Data Sources**:
+- **NASA POWER**: (today - 29 days) → today (complete 30-day coverage, no delay)
+- **Open-Meteo Archive**: (today - 29 days) → (today - 2 days) (2-day latency)
+- **Open-Meteo Forecast**: (today - 29 day) → today (fills Archive gap for last 2 days)
+
+**Use Cases**:
+- Real-time crop monitoring
+- Recent weather pattern analysis
+- Short-term irrigation planning
+- Current season tracking
+
+**Examples** (reference: Dec 1, 2025):
+- **30 days**: `Nov 2, 2025 to Dec 1, 2025` (today - 29d to today)
+- **7 days**: `Nov 25, 2025 to Dec 1, 2025` (today - 6d to today)
+- **14 days**: `Nov 18, 2025 to Dec 1, 2025` (today - 13d to today)
+
+---
+
+### Mode 3: DASHBOARD_FORECAST (Future Projection)
+
+**Purpose**: Short-term ETo forecasting  
+**Interface**: Web dashboard (fixed 6-day period)  
+**Period**: 6 days fixed → `today to today + 5 days` (inclusive)
+
+#### Standard Mode (Global Coverage)
+
+**Data Sources**:
+- **Open-Meteo Forecast**: today -> today + 5 days (all variables)
+- **Met Norway**: today -> today + 5 days (temperature + humidity globally; full variables in Nordic region)
+
+#### USA Enhanced Mode
+
+**For locations in USA**, user can choose via radio button:
+
+**Option A: "Data Fusion" (default)**
+- **Open-Meteo Forecast**: today → today + 5 days
+- **Met Norway**: today → today + 5 days (temperature + humidity)
+- **NWS Forecast**: today → today + 5 days (if request time < 20h UTC)
+
+**Option B: "Real Station Data"**
+- **NWS Stations**: today only (real-time observations)
+- Shows number of nearby stations found
+- All variables available from ground measurements
+- Download button for station data
+
+**Use Cases**:
+- Short-term irrigation scheduling
+- Weather-responsive farm management
+- Near-future water requirement planning
+- Forecast-based decision support
+
+**Example** (reference: Dec 1, 2025):
+- **Fixed period**: `Dec 1, 2025 to Dec 6, 2025` (6 days: 1, 2, 3, 4, 5, 6)
+
+---
+
 ## Temporal Coverage Summary
 
-| Data Source | Start Date | End Date | Update Frequency | Latency | Validation Period |
-|-------------|-----------|----------|-----------------|---------|------------------|
-| **Xavier BR-DWGD** | 1961-01-01 | 2024-12-31* | - | - | 1991-01-01 to 2020-12-31 |
-| **NASA POWER** | 1981-01-01 | Present | Daily | **0 days** | 1991-01-01 to 2020-12-31 |
-| **Open-Meteo Archive** | 1940-01-01 | Today - 2 days | Daily | **2 days** | 1991-01-01 to 2020-12-31 |
-| **Open-Meteo Forecast** | Today - 29 days | Today + 5 days | Daily | **0 days** | Not used in validation |
+| Data Source | Start Date | End Date | Update Frequency | Latency | Validation Period | EVAonline Mode |
+|-------------|-----------|----------|-----------------|---------|------------------|----------------|
+| **Xavier BR-DWGD** | 1961-01-01 | 2024-12-31* | - | - | 1991-01-01 to 2020-12-31 | Reference only |
+| **NASA POWER** | 1990-01-01 | today | Daily | **0 days** | 1991-01-01 to 2020-12-31 | Mode 1, 2 |
+| **Open-Meteo Archive** | 1990-01-01 | today - 2 days | Daily | **2 days** | 1991-01-01 to 2020-12-31 | Mode 1, 2 |
+| **Open-Meteo Forecast** | today - 29 days | today + 5 days | Daily | **0 days** | Not used in validation | Mode 2, 3 |
+| **Met Norway** | today | today + 5 days | Hourly | **0 days** | Not used in validation | Mode 3 |
+| **NWS Forecast** | today | today + 5 days | Hourly | Variable | Not used in validation | Mode 3 (USA) |
+| **NWS Stations** | today | today | Real-time | **0 days** | Not used in validation | Mode 3 (USA alt) |
 
 **\*** Xavier dataset extended to 2024 but official publication covers 1961-2020
 

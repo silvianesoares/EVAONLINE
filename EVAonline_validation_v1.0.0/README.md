@@ -4,7 +4,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Data](https://img.shields.io/badge/Data-Open%20Access-brightgreen.svg)](https://zenodo.org/)
 
-**Complete validation dataset for EVAOnline: An open-source adaptive Kalman fusion system for reference evapotranspiration estimation in Brazil**
+**Complete validation dataset for EVAOnline: Validation Dataset v1.0.0: Adaptive Kalman Fusion System for Reference Evapotranspiration in Brazil (1991-2020)**
 
 ---
 
@@ -45,22 +45,58 @@ conda env create -f environment.yml
 conda activate evaonline-validation
 ```
 
-### Load Data
+### Recommended Start Path
+
+**🎯 NEW USERS - Start here:**
+
+| Path | Notebook | Best For | Time |
+|------|----------|----------|------|
+| **1️⃣ Tutorial** | [`tutorial_full_pipeline.ipynb`](tutorial_full_pipeline.ipynb) | Learning methodology, understanding pipeline | ~10 min |
+| **2️⃣ Complete Study** | [`complete_validation_analysis.ipynb`](complete_validation_analysis.ipynb) | Reproducing results, comparing all sources | ~30 min |
+
+**Why start with notebooks?**
+- ✅ **Interactive** - Run code cells step-by-step, see immediate results
+- ✅ **Educational** - Detailed markdown explanations for each step
+- ✅ **Visual** - High-quality plots generated automatically
+- ✅ **Complete** - No need to run multiple scripts separately
+- ✅ **Accurate** - Implements all scientific fixes (elevation API, wind conversion, region detection)
+
+**Tutorial Notebook** (`tutorial_full_pipeline.ipynb`):
+- Single city demonstration (Piracicaba/SP)
+- Shows complete EVAonline pipeline from raw data to validation
+- Automatic elevation fetching from OpenTopoData API
+- Wind height conversion (10m → 2m) using FAO-56 Eq. 47
+- Region-specific validation limits (Xavier for Brazil)
+- Kalman fusion with uncertainty quantification
+- **Perfect for understanding how EVAonline works**
+
+**Complete Analysis Notebook** (`complete_validation_analysis.ipynb`):
+- All 17 cities automated analysis
+- 4 ETo sources: NASA POWER, Open-Meteo API, Open-Meteo calc, EVAonline Fusion
+- Individual city reports (time series + 4 scatter plots each)
+- Summary statistics, boxplots, heatmaps, ranking tables
+- Complete CSV exports for further analysis
+- **Reproduces all paper results in one run**
+
+### Alternative: Load Pre-Processed Data
 
 ```python
 import pandas as pd
 
-# Recommended: Use consolidated file
-df = pd.read_csv("all_cities_daily_eto_1994_2024.csv", parse_dates=["date"])
+# Load consolidated climate data (1991-2020)
+df = pd.read_csv("data/3_combined_datasets/all_climate_data_1991_2020.csv", parse_dates=["date"])
+
+# Load ETo comparison (4 sources: Xavier, NASA, OpenMeteo, EVAonline)
+df_eto = pd.read_csv("data/7_comparison_all_sources/COMPARISON_ALL_SOURCES.csv", parse_dates=["date"])
 
 # Filter by city
-piracicaba = df[df["city"] == "Piracicaba_SP"]
+piracicaba = df_eto[df_eto["city"] == "Piracicaba_SP"]
 
 # Compare methods
-print(piracicaba[["date", "eto_xavier", "eto_nasa", "eto_openmeteo", "eto_evaonline"]].head())
+print(piracicaba[["date", "eto_xavier", "eto_nasa", "eto_openmeteo_api", "eto_evaonline"]].head())
 ```
 
-📓 **Interactive tutorial**: See `notebooks/quick_start_example.ipynb`
+📓 **Additional tutorials**: See `notebooks/` directory for 6 API demo notebooks
 
 ---
 
@@ -69,17 +105,55 @@ print(piracicaba[["date", "eto_xavier", "eto_nasa", "eto_openmeteo", "eto_evaonl
 ```
 EVAonline_validation_v1.0.0/
 ├── data/                          # Validation datasets
-│   ├── original_data/            # Raw sources (Xavier, NASA, OpenMeteo)
-│   ├── 4_eto_nasa_only/          # NASA ETo (Script 4)
-│   ├── 4_eto_openmeteo_only/     # OpenMeteo ETo (Script 4)
+│   ├── info_cities.csv           # 17 cities metadata (coordinates, elevation)
+│   ├── 1_figures/                # Study area maps and plots
+│   ├── 2_statistics_raw_dataset/ # Descriptive statistics (Script 2)
+│   ├── 3_combined_datasets/      # Consolidated raw data (Script 3)
+│   │   ├── all_climate_data_1991_2020.csv        # All sources combined
+│   │   ├── all_nasa_power_raw_1991_2020.csv      # NASA POWER raw
+│   │   └── all_open_meteo_raw_1991_2020.csv      # Open-Meteo raw
+│   ├── 4_eto_nasa_only/          # NASA ETo calculations (Script 4)
+│   ├── 4_eto_openmeteo_only/     # OpenMeteo ETo calculations (Script 4)
+│   ├── 5_validation_eto_evaonline/ # Single-source validation (Script 5)
 │   ├── 6_validation_full_pipeline/ # EVAonline Kalman fusion (Script 6)
-│   └── 7_comparison_all_sources/  # 4-source comparison (Script 7)
+│   ├── 7_comparison_all_sources/ # 4-source comparison (Script 7)
+│   │   ├── COMPARISON_ALL_SOURCES.csv  # Complete comparison data
+│   │   ├── SUMMARY_BY_SOURCE.csv       # Summary metrics by source
+│   │   └── plots/                      # Comparison visualizations
+│   ├── csv/                      # Additional CSV data
+│   └── original_data/            # Raw sources (Xavier, NASA, OpenMeteo)
+│       ├── eto_xavier_csv/       # Xavier ETo reference data
+│       ├── nasa_power_raw/       # NASA POWER API downloads
+│       ├── open_meteo_raw/       # Open-Meteo API downloads
+│       ├── eto_open_meteo/       # Open-Meteo ETo API data
+│       ├── historical/           # Historical climate data
+│       └── map_data/             # Geospatial data (shapefiles, GeoJSON)
 │
 ├── scripts/                       # Validation scripts
-│   ├── 4_calculate_eto_data_from_openmeteo_or_nasapower.py
-│   ├── 5_validate_eto_calc.py    # Single-source validation
-│   ├── 6_validate_full_pipeline.py # Full Kalman fusion ⭐
-│   └── 7_compare_all_eto_sources.py # Comprehensive comparison
+│   ├── 1_generate_matopiba_map.py        # Study area map generation
+│   ├── 2_generate_descriptive_stats.py   # Descriptive statistics
+│   ├── 3_concat_row_dataset_nasapower_openmeteo.py  # Data consolidation
+│   ├── 4_calculate_eto_data_from_openmeteo_or_nasapower.py  # ETo calculation
+│   ├── 5_validate_eto_calc.py            # Single-source validation
+│   ├── 6_validate_full_pipeline.py       # Full Kalman fusion ⭐
+│   ├── 7_compare_all_eto_sources.py      # 4-source comparison
+│   ├── config.py                         # Configuration settings
+│   ├── api/                      # API client modules
+│   │   └── services/             # Climate API services
+│   │       ├── nasa_power/       # NASA POWER client
+│   │       ├── openmeteo_archive/  # Open-Meteo Archive client
+│   │       ├── openmeteo_forecast/ # Open-Meteo Forecast client
+│   │       ├── met_norway/       # Met Norway client
+│   │       ├── nws_forecast/     # NWS Forecast client
+│   │       ├── nws_stations/     # NWS Stations client
+│   │       ├── opentopo/         # OpenTopoData elevation client
+│   │       ├── geographic_utils.py   # Geographic utilities
+│   │       ├── weather_utils.py      # Weather data utilities
+│   │       ├── climate_validation.py # Data validation
+│   │       └── climate_source_*.py   # Source management
+│   └── core/                     # Core processing modules
+│       ├── data_processing/      # Data preprocessing, Kalman ensemble
+│       └── eto_calculation/      # ETo calculation services
 │
 ├── docs/                          # Detailed documentation
 │   ├── data_sources_specifications.md   # API technical specs
@@ -87,10 +161,31 @@ EVAonline_validation_v1.0.0/
 │   ├── kalman_methodology.md            # Kalman filter details
 │   ├── performance_analysis.md          # Detailed results
 │   ├── api_operational_details.md       # Operational guidelines
-│   └── validation_eto_evaonline.md      # Full validation report
+│   ├── validation_eto_evaonline.md      # Full validation report
+│   ├── elevation_integration.md         # OpenTopoData integration
+│   ├── evaonline_architecture.md        # System architecture
+│   ├── regional_validation_system.md    # Regional validation
+│   ├── study_area_map_generation.md     # Map generation guide
+│   └── README.md                        # Documentation index
 │
-└── notebooks/                     # Jupyter tutorials
-    └── quick_start_example.ipynb
+├── notebooks/                     # Jupyter tutorials (6 API demos)
+│   ├── 01_nasa_power_api_demo.ipynb     # NASA POWER demonstration
+│   ├── 02_openmeteo_archive_api_demo.ipynb  # Open-Meteo Archive demo
+│   ├── 03_openmeteo_forecast_api_demo.ipynb # Open-Meteo Forecast demo
+│   ├── 04_met_norway_api_demo.ipynb     # Met Norway demonstration
+│   ├── 05_nws_forecast_api_demo.ipynb   # NWS Forecast demonstration
+│   ├── 06_nws_stations_api_demo.ipynb   # NWS Stations demonstration
+│   └── README.md                        # Notebooks documentation
+│
+├── tutorial_full_pipeline.ipynb       # ⭐ RECOMMENDED START - Single city tutorial
+├── complete_validation_analysis.ipynb # ⭐ Complete 17-city validation study
+│
+├── CITATION.cff               # Citation metadata (CFF format)
+├── zenodo.json                # Zenodo deposit metadata
+├── LICENSE                    # AGPL-3.0 license
+├── README.md                  # This file
+├── requirements.txt           # Python dependencies (pip)
+└── environment.yml            # Conda environment specification
 ```
 
 ---
@@ -113,7 +208,7 @@ EVAonline_validation_v1.0.0/
 
 **Wind Speed Measurement Height** ⚠️ **Critical**:
 - **NASA POWER**: Native 2m wind ✅ (no conversion)
-- **Open-Meteo**: Native 10m wind → **must convert to 2m** using FAO-56 Eq. 47
+- **Open-Meteo**: Native 10m wind -> **must convert to 2m** using FAO-56 Eq. 47
 - **Impact**: Not converting causes ~15% ETo overestimation
 
 **Data Aggregation**:
@@ -155,11 +250,56 @@ EVAonline implements an **adaptive Kalman filter**:
 
 ---
 
-## 📈 Validation Scripts
+## 📈 Validation Options
 
-### Run Validations
+### Option 1: Interactive Notebooks (⭐ RECOMMENDED)
+
+**For learning and exploration:**
 
 ```bash
+# Start with the single-city tutorial
+jupyter notebook tutorial_full_pipeline.ipynb
+```
+
+**For complete validation study:**
+
+```bash
+# Run the comprehensive 17-city analysis
+jupyter notebook complete_validation_analysis.ipynb
+```
+
+**What the notebooks provide:**
+- `tutorial_full_pipeline.ipynb`:
+  - Interactive step-by-step guide (single city: Piracicaba/SP)
+  - Automatic elevation fetching from OpenTopoData API
+  - Wind height conversion (10m → 2m) using FAO-56 Eq. 47
+  - Region-specific validation limits (Xavier for Brazil, global elsewhere)
+  - Kalman fusion demonstration with visualizations
+  - Complete metrics calculation and interpretation
+
+- `complete_validation_analysis.ipynb`:
+  - Automated analysis for all 17 cities
+  - Loads 4 ETo sources: NASA POWER, Open-Meteo API, Open-Meteo calc, EVAonline Fusion
+  - Generates individual city reports (time series + 4 scatter plots each)
+  - Summary statistics and comparative boxplots
+  - KGE heatmap across cities and sources
+  - Performance ranking tables
+  - Complete CSV exports for further analysis
+
+### Option 2: Python Scripts (Advanced)
+
+**For batch processing or automation:**
+
+```bash
+# Script 1: Generate study area map
+python scripts/1_generate_matopiba_map.py
+
+# Script 2: Generate descriptive statistics
+python scripts/2_generate_descriptive_stats.py
+
+# Script 3: Consolidate raw datasets (NASA + OpenMeteo)
+python scripts/3_concat_row_dataset_nasapower_openmeteo.py
+
 # Script 4: Calculate ETo from raw data (NASA or OpenMeteo)
 python scripts/4_calculate_eto_data_from_openmeteo_or_nasapower.py --source nasa
 python scripts/4_calculate_eto_data_from_openmeteo_or_nasapower.py --source openmeteo
@@ -170,18 +310,22 @@ python scripts/5_validate_eto_calc.py
 # Script 6: Full pipeline with Kalman fusion ⭐ RECOMMENDED
 python scripts/6_validate_full_pipeline.py
 
-# Script 7: Compare all 4 ETo sources
+# Script 7: Compare all 4 ETo sources (comprehensive analysis)
 python scripts/7_compare_all_eto_sources.py
 ```
 
 ### Key Outputs
 
-| Script | Output Directory | Description |
-|--------|-----------------|-------------|
-| 4 | `data/4_eto_nasa_only/` | NASA ETo calculated with FAO-56 |
-| 4 | `data/4_eto_openmeteo_only/` | OpenMeteo ETo calculated with FAO-56 |
-| 6 | `data/6_validation_full_pipeline/` | **EVAonline full Kalman fusion** ⭐ |
-| 7 | `data/7_comparison_all_sources/` | Comprehensive 4-source comparison |
+| Script | Output Directory | Key Files | Description |
+|--------|-----------------|-----------|-------------|
+| 1 | `data/1_figures/` | `study_area_map.png` | MATOPIBA region map with climate zones |
+| 2 | `data/2_statistics_raw_dataset/` | `descriptive_stats_*.csv` | Descriptive statistics for all sources |
+| 3 | `data/3_combined_datasets/` | `all_climate_data_1991_2020.csv` | Consolidated raw climate data (28 MB) |
+| 4 | `data/4_eto_nasa_only/` | `ALL_CITIES_ETo_NASA_ONLY_1991_2020.csv` | NASA ETo calculated with FAO-56 |
+| 4 | `data/4_eto_openmeteo_only/` | `ALL_CITIES_ETo_OPENMETEO_ONLY_1991_2020.csv` | OpenMeteo ETo calculated with FAO-56 |
+| 5 | `data/5_validation_eto_evaonline/` | `summary_vs_*.csv` | Single-source validation results |
+| 6 | `data/6_validation_full_pipeline/` | City-specific validation files | **EVAonline full Kalman fusion** ⭐ |
+| 7 | `data/7_comparison_all_sources/` | `COMPARISON_ALL_SOURCES.csv`, `SUMMARY_BY_SOURCE.csv` | Comprehensive 4-source comparison |
 
 ---
 
@@ -210,7 +354,41 @@ python scripts/7_compare_all_eto_sources.py
 **Period**: 1991-01-01 to 2020-12-31 (30 years)  
 **Total observations**: 186,286 daily ETo values (17 cities × 10,958 days)
 
+**City Metadata**: See `data/info_cities.csv` for coordinates and elevation
+
 ![Study Area Map](data/1_figures/study_area_map.png)
+
+*Note: Map generated by `scripts/1_generate_matopiba_map.py`*
+
+---
+
+## 📓 Jupyter Notebooks
+
+### Validation Notebooks (Root Directory)
+
+| Notebook | Description | Use Case |
+|----------|-------------|----------|
+| **`tutorial_full_pipeline.ipynb`** | ⭐ **Start here** - Single city interactive tutorial | Learning EVAonline methodology step-by-step |
+| **`complete_validation_analysis.ipynb`** | Complete 17-city validation study | Reproducing paper results, comprehensive analysis |
+
+### API Demo Notebooks (notebooks/ Directory)
+
+Additional tutorials demonstrating each climate API integration:
+
+- `01_nasa_power_api_demo.ipynb` - NASA POWER API usage
+- `02_openmeteo_archive_api_demo.ipynb` - Open-Meteo Archive (ERA5-Land reanalysis)
+- `03_openmeteo_forecast_api_demo.ipynb` - Open-Meteo Forecast (7-day)
+- `04_met_norway_api_demo.ipynb` - Met Norway API (Nordic region)
+- `05_nws_forecast_api_demo.ipynb` - NWS Forecast API (USA)
+- `06_nws_stations_api_demo.ipynb` - NWS Station data (USA)
+
+**Key Features of Validation Notebooks:**
+- ✅ Automatic region detection (Brazil vs global validation limits)
+- ✅ Real elevation fetching from OpenTopoData API
+- ✅ Correct wind height conversion (10m → 2m FAO-56 Eq. 47)
+- ✅ Kalman fusion with uncertainty quantification
+- ✅ Complete metrics (R², KGE, NSE, MAE, RMSE, PBIAS)
+- ✅ High-quality publication-ready visualizations
 
 ---
 
@@ -223,7 +401,7 @@ If you use this dataset, please cite:
   author       = {Soares, Ângela Silviane Moura Cunha and
                   Maciel, Carlos Dias and
                   Marques, Patricia Angélica Alves},
-  title        = {EVAonline Validation Dataset v1.0.0: Kalman Fusion System for Reference Evapotranspiration in Brazil (1991-2020)},
+  title        = {EVAonline Validation Dataset v1.0.0: Adaptive Kalman Fusion System for Reference Evapotranspiration in Brazil (1991-2020)},
   year         = {2025},
   publisher    = {Zenodo},
   version      = {1.0.0},
@@ -235,12 +413,15 @@ If you use this dataset, please cite:
 **Also cite the reference data:**
 
 ```bibtex
-@misc{xavier2024brdwgd,
-  author       = {Xavier, Alexandre Candido},
-  title        = {Brazilian Daily Weather Gridded Data (BR-DWGD)},
-  year         = {2024},
-  howpublished = {\url{https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data}},
-  note         = {Daily gridded meteorological data (1961/01/01-2024/03/20), 0.1° resolution, 3,625+ stations}
+@article{Xavier2022BRDWGD,
+  author = {Xavier, Alexandre C. and Scanlon, Bridget R. and King, Carey W. and Alves, Ana I.},
+  title  = {New improved {B}razilian daily weather gridded data (1961--2020)},
+  journal = {International Journal of Climatology},
+  volume = {42},
+  number = {16},
+  pages  = {8390--8404},
+  year   = {2022},
+  doi    = {10.1002/joc.7731}
 }
 ```
 
@@ -269,12 +450,18 @@ See [`CITATION.cff`](CITATION.cff) for machine-readable metadata.
 
 ## 🔐 Data Integrity
 
-All data files listed in [`data_manifest.csv`](data_manifest.csv) with MD5 checksums.
+All primary datasets are version-controlled with MD5 checksums available in Zenodo deposit.
 
-Verify integrity:
-```bash
-python scripts/generate_data_manifest.py
-md5sum data/xavier/Piracicaba_SP.csv  # Compare with manifest
+Verify file integrity:
+```powershell
+# Check consolidated datasets
+Get-ChildItem -Path "data\3_combined_datasets" | Select-Object Name, Length | Format-Table
+
+# Verify CSV structure
+Get-Content "data\3_combined_datasets\all_climate_data_1991_2020.csv" -TotalCount 5
+
+# Check comparison results
+Get-Content "data\7_comparison_all_sources\SUMMARY_BY_SOURCE.csv"
 ```
 
 ---
@@ -282,10 +469,6 @@ md5sum data/xavier/Piracicaba_SP.csv  # Compare with manifest
 ## 📜 License
 
 - **Code**: AGPL-3.0 (see [LICENSE](LICENSE))
-- **Data**: 
-  - Xavier BR-DWGD: [See publication terms](https://doi.org/10.1002/joc.7731)
-  - NASA POWER: Public Domain
-  - Open-Meteo: CC BY 4.0
 
 ---
 

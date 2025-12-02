@@ -15,11 +15,11 @@ Core Services (Factory Pattern):
 └── ClimateValidationService      - Validação centralizada de inputs
 
 API Clients (6 Fontes de Dados):
-├── NASA POWER                  - Dados históricos globais (1981+)
+├── NASA POWER                  - Dados históricos globais (1990+)
 ├── MET Norway Locationforecast - Previsão global (padronizado 5 dias)
 ├── NWS/NOAA Forecast           - Previsão USA Continental (padronizado 5 dias)
 ├── NWS/NOAA Stations           - Observações USA Continental
-├── Open-Meteo Archive          - Histórico global (1940+)
+├── Open-Meteo Archive          - Histórico global (1990+)
 └── Open-Meteo Forecast         - Previsão global (padronizado 5 dias)
 
 CACHE STRATEGY:

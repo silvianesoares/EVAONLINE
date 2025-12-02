@@ -1,19 +1,19 @@
 """
 Weather conversion and aggregation utilities.
 
-Centraliza todas as conversões de unidades e fórmulas meteorológicas
-para eliminar duplicação de código entre os clientes climáticos.
+Centralizes all unit conversions and meteorological formulas
+to eliminate code duplication between climate clients.
 
-SINGLE SOURCE OF TRUTH para:
-- Conversão de vento (10m → 2m usando FAO-56)
-- Conversão de temperatura (°F → °C)
-- Conversão de velocidade (mph → m/s)
-- Conversão de radiação solar
-- Validações meteorológicas comuns
-- Agregação hourly-to-daily (ex.: MET Norway)
-- Cache handling para APIs
-- Correções de elevação FAO-56
-- Métricas Prometheus para validações
+SINGLE SOURCE OF TRUTH for:
+- Wind conversion (10m → 2m using FAO-56)
+- Temperature conversion (°F → °C)
+- Speed conversion (mph → m/s)
+- Solar radiation conversion
+- Common meteorological validations
+- Hourly-to-daily aggregation (e.g., MET Norway)
+- Cache handling for APIs
+- FAO-56 elevation corrections
+- Prometheus metrics for validations
 """
 
 from datetime import datetime, timezone
@@ -27,7 +27,7 @@ from loguru import logger
 try:
     import prometheus_client as prom
 
-    # Counter para validações falhas (Prometheus)
+    # Counter for validation failures (Prometheus)
     VALIDATION_ERRORS = prom.Counter(
         "weather_validation_errors_total",
         "Total validation errors",
@@ -42,32 +42,32 @@ except ImportError:
 
 class WeatherConversionUtils:
     """
-    Utilitários de conversão de unidades meteorológicas.
+    Meteorological unit conversion utilities.
 
-    Todas as conversões seguem padrões internacionais:
-    - FAO-56 para vento e evapotranspiração
-    - Unidades SI (Sistema Internacional)
+    All conversions follow international standards:
+    - FAO-56 for wind and evapotranspiration
+    - SI units (International System)
     """
 
     @staticmethod
     def convert_wind_10m_to_2m(wind_10m: float | None) -> float | None:
         """
-        Converte velocidade do vento de 10m para 2m usando FAO-56.
+        Convert wind speed from 10m to 2m height using FAO-56.
 
-        Fórmula FAO-56: u₂ = u₁₀ × 0.748
+        FAO-56 formula: u₂ = u₁₀ × 0.748
 
-        Esta conversão é necessária porque:
-        - Sensores medem vento a 10m de altura (padrão)
-        - ETo FAO-56 requer vento a 2m de altura
-        - Fator 0.748 considera perfil logarítmico de vento
+        This conversion is necessary because:
+        - Sensors measure wind at 10m height (standard)
+        - FAO-56 ETo requires wind at 2m height
+        - Factor 0.748 accounts for logarithmic wind profile
 
         Args:
-            wind_10m: Velocidade do vento a 10m (m/s)
+            wind_10m: Wind speed at 10m (m/s)
 
         Returns:
-            Velocidade do vento a 2m (m/s) ou None
+            Wind speed at 2m (m/s) or None
 
-        Referência:
+        Reference:
             Allen et al. (1998). FAO Irrigation and Drainage Paper 56
             Chapter 3, Equation 47, page 56
         """
@@ -78,15 +78,15 @@ class WeatherConversionUtils:
     @staticmethod
     def fahrenheit_to_celsius(fahrenheit: float | None) -> float | None:
         """
-        Converte temperatura de Fahrenheit para Celsius.
+        Convert temperature from Fahrenheit to Celsius.
 
-        Fórmula: °C = (°F - 32) x 5/9
+        Formula: °C = (°F - 32) x 5/9
 
         Args:
-            fahrenheit: Temperatura em °F
+            fahrenheit: Temperature in °F
 
         Returns:
-            Temperatura em °C ou None
+            Temperature in °C or None
         """
         if fahrenheit is None:
             return None
@@ -95,15 +95,15 @@ class WeatherConversionUtils:
     @staticmethod
     def celsius_to_fahrenheit(celsius: float | None) -> float | None:
         """
-        Converte temperatura de Celsius para Fahrenheit.
+        Convert temperature from Celsius to Fahrenheit.
 
-        Fórmula: °F = °C x 9/5 + 32
+        Formula: °F = °C x 9/5 + 32
 
         Args:
-            celsius: Temperatura em °C
+            celsius: Temperature in °C
 
         Returns:
-            Temperatura em °F ou None
+            Temperature in °F or None
         """
         if celsius is None:
             return None
@@ -112,15 +112,15 @@ class WeatherConversionUtils:
     @staticmethod
     def mph_to_ms(mph: float | None) -> float | None:
         """
-        Converte velocidade de milhas por hora para metros por segundo.
+        Convert speed from miles per hour to meters per second.
 
-        Fórmula: 1 mph = 0.44704 m/s
+        Formula: 1 mph = 0.44704 m/s
 
         Args:
-            mph: Velocidade em mph
+            mph: Speed in mph
 
         Returns:
-            Velocidade em m/s ou None
+            Speed in m/s or None
         """
         if mph is None:
             return None
@@ -129,15 +129,15 @@ class WeatherConversionUtils:
     @staticmethod
     def ms_to_mph(ms: float | None) -> float | None:
         """
-        Converte velocidade de metros por segundo para milhas por hora.
+        Convert speed from meters per second to miles per hour.
 
-        Fórmula: 1 m/s = 2.23694 mph
+        Formula: 1 m/s = 2.23694 mph
 
         Args:
-            ms: Velocidade em m/s
+            ms: Speed in m/s
 
         Returns:
-            Velocidade em mph ou None
+            Speed in mph or None
         """
         if ms is None:
             return None
@@ -146,15 +146,15 @@ class WeatherConversionUtils:
     @staticmethod
     def wh_per_m2_to_mj_per_m2(wh_per_m2: float | None) -> float | None:
         """
-        Converte radiação solar de Wh/m² para MJ/m².
+        Convert solar radiation from Wh/m² to MJ/m².
 
-        Fórmula: 1 Wh = 0.0036 MJ
+        Formula: 1 Wh = 0.0036 MJ
 
         Args:
-            wh_per_m2: Radiação em Wh/m²
+            wh_per_m2: Radiation in Wh/m²
 
         Returns:
-            Radiação em MJ/m² ou None
+            Radiation in MJ/m² or None
         """
         if wh_per_m2 is None:
             return None
@@ -163,15 +163,15 @@ class WeatherConversionUtils:
     @staticmethod
     def mj_per_m2_to_wh_per_m2(mj_per_m2: float | None) -> float | None:
         """
-        Converte radiação solar de MJ/m² para Wh/m².
+        Convert solar radiation from MJ/m² to Wh/m².
 
-        Fórmula: 1 MJ = 277.778 Wh
+        Formula: 1 MJ = 277.778 Wh
 
         Args:
-            mj_per_m2: Radiação em MJ/m²
+            mj_per_m2: Radiation in MJ/m²
 
         Returns:
-            Radiação em Wh/m² ou None
+            Radiation in Wh/m² or None
         """
         if mj_per_m2 is None:
             return None
@@ -180,51 +180,47 @@ class WeatherConversionUtils:
 
 class WeatherValidationUtils:
     """
-    Validações de dados meteorológicos.
+    Meteorological data validations.
 
-    Verifica ranges válidos para variáveis meteorológicas
-    baseado em limites físicos e práticos.
+    Verifies valid ranges for meteorological variables
+    based on physical and practical limits.
     """
 
-    # ═══════════════════════════════════════════════════════════════
-    # LIMITES GLOBAIS (Mundo inteiro)
-    # Baseado em records mundiais e limites físicos
-    # ═══════════════════════════════════════════════════════════════
+    # GLOBAL LIMITS (Worldwide)
+    # Based on world records and physical limits
     TEMP_MIN = (
         -90.0
-    )  # °C (Record mundial: -89.2°C: https://svs.gsfc.nasa.gov/4126/)
-    TEMP_MAX = 60.0  # °C (Record mundial: 56.7°C: https://www.ncei.noaa.gov/news/earths-hottest-temperature)
+    )  # °C (World record: -89.2°C: https://svs.gsfc.nasa.gov/4126/)
+    TEMP_MAX = 60.0  # °C (World record: 56.7°C: https://www.ncei.noaa.gov/news/earths-hottest-temperature)
     HUMIDITY_MIN = 0.0  # % (https://www.psu.edu/news/research/story/humans-cant-endure-temperatures-and-humidities-high-previously-thought)
     HUMIDITY_MAX = 100.0  # % (https://www.psu.edu/news/research/story/humans-cant-endure-temperatures-and-humidities-high-previously-thought)
     WIND_MIN = (
         0.0  # m/s (https://mountwashington.org/remembering-the-big-wind/)
     )
-    WIND_MAX = 120.0  # m/s (~432 km/h, furacão categoria 5: https://mountwashington.org/remembering-the-big-wind/)
+    WIND_MAX = 120.0  # m/s (~432 km/h, category 5 hurricane: https://mountwashington.org/remembering-the-big-wind/)
     PRECIP_MIN = 0.0  # mm (https://www.weather.gov/owp/hdsc_world_record)
-    PRECIP_MAX = 2000.0  # mm/dia (record: ~1825mm: (https://www.weather.gov/owp/hdsc_world_record)
-    SOLAR_MIN = 0.0  # MJ/m²/dia (https://www.bom.gov.au/climate/austmaps/metadata-daily-solar-exposure.shtml)
-    SOLAR_MAX = 35.0  # MJ/m²/dia (https://www.bom.gov.au/climate/austmaps/metadata-daily-solar-exposure.shtml)
+    PRECIP_MAX = 2000.0  # mm/day (record: ~1825mm: (https://www.weather.gov/owp/hdsc_world_record)
+    SOLAR_MIN = 0.0  # MJ/m²/day (https://www.bom.gov.au/climate/austmaps/metadata-daily-solar-exposure.shtml)
+    SOLAR_MAX = 35.0  # MJ/m²/day (https://www.bom.gov.au/climate/austmaps/metadata-daily-solar-exposure.shtml)
 
-    # ═══════════════════════════════════════════════════════════════
-    # LIMITES BRASIL (Xavier et al. 2016, 2022)
+    # BRAZIL LIMITS (Xavier et al. 2016, 2022)
     # "New improved Brazilian daily weather gridded data (1961–2020)"
     # https://rmets.onlinelibrary.wiley.com/doi/abs/10.1002/joc.7731
-    # Validações mais rigorosas para dados brasileiros
-    # ═══════════════════════════════════════════════════════════════
-    BRAZIL_TEMP_MIN = -30.0  # °C (limites Xavier)
-    BRAZIL_TEMP_MAX = 50.0  # °C (limites Xavier)
+    # More rigorous validations for Brazilian data
+    BRAZIL_TEMP_MIN = -30.0  # °C (Xavier limits)
+    BRAZIL_TEMP_MAX = 50.0  # °C (Xavier limits)
     BRAZIL_HUMIDITY_MIN = 0.0  # %
     BRAZIL_HUMIDITY_MAX = 100.0  # %
     BRAZIL_WIND_MIN = 0.0  # m/s
-    BRAZIL_WIND_MAX = 100.0  # m/s (limites Xavier)
+    BRAZIL_WIND_MAX = 100.0  # m/s (Xavier limits)
     BRAZIL_PRECIP_MIN = 0.0  # mm
-    BRAZIL_PRECIP_MAX = 450.0  # mm/dia (limites Xavier)
-    BRAZIL_SOLAR_MIN = 0.0  # MJ/m²/dia
-    BRAZIL_SOLAR_MAX = 40.0  # MJ/m²/dia (limites Xavier)
+    BRAZIL_PRECIP_MAX = 450.0  # mm/day (Xavier limits)
+    BRAZIL_SOLAR_MIN = 0.0  # MJ/m²/day
+    BRAZIL_SOLAR_MAX = 40.0  # MJ/m²/day (Xavier limits)
     BRAZIL_PRESSURE_MIN = 900.0  # hPa
     BRAZIL_PRESSURE_MAX = 1100.0  # hPa
 
-    # Dicionário de limites por região
+    # Regional limits dictionary
     REGIONAL_LIMITS = {
         "global": {
             "temperature": (TEMP_MIN, TEMP_MAX),
@@ -252,33 +248,33 @@ class WeatherValidationUtils:
         region: str | None = None,
     ) -> dict[str, tuple[float, float]]:
         """
-        Retorna limites de validação por região detectada.
+        Returns validation limits by detected region.
 
         Args:
-            lat: Latitude (para detecção automática de região)
-            lon: Longitude (para detecção automática de região)
-            region: Região explícita ("global", "brazil", "usa", "nordic")
-                   Sobrescreve detecção automática se fornecido.
+            lat: Latitude (for automatic region detection)
+            lon: Longitude (for automatic region detection)
+            region: Explicit region ("global", "brazil", "usa", "nordic")
+                   Overrides automatic detection if provided.
 
         Returns:
-            Dict com limites (min, max) para cada variável
+            Dict with (min, max) limits for each variable
 
-        Exemplo:
-            # Detecção automática
+        Example:
+            # Automatic detection
             limits = WeatherValidationUtils.get_validation_limits(
                 lat=-23.5505, lon=-46.6333
             )
-            # São Paulo → limites do Brasil
+            # Sao Paulo → Brazil limits
 
-            # Região explícita
+            # Explicit region
             limits = WeatherValidationUtils.get_validation_limits(
                 region="brazil"
             )
         """
-        # Import local para evitar circular
+        # Local import to avoid circular dependency
         from .geographic_utils import GeographicUtils
 
-        # Determinar região
+        # Determine region
         if region is None and lat is not None and lon is not None:
             detected_region = GeographicUtils.get_region(lat, lon)
             region_lower = detected_region.lower()
@@ -287,11 +283,11 @@ class WeatherValidationUtils:
         else:
             region_lower = "global"
 
-        # Mapear região para limites
+        # Map region to limits
         if region_lower not in cls.REGIONAL_LIMITS:
             logger.warning(
-                f"Região '{region_lower}' não reconhecida. "
-                f"Usando limites globais."
+                f"Region '{region_lower}' not recognized. "
+                f"Using global limits."
             )
             region_lower = "global"
 
@@ -306,13 +302,13 @@ class WeatherValidationUtils:
         region: str | None = None,
     ) -> bool:
         """
-        Valida temperatura em °C.
+        Validate temperature in °C.
 
         Args:
-            temp: Temperatura em °C
-            lat: Latitude (para detecção de região)
-            lon: Longitude (para detecção de região)
-            region: Região explícita (sobrescreve detecção)
+            temp: Temperature in °C
+            lat: Latitude (for region detection)
+            lon: Longitude (for region detection)
+            region: Explicit region (overrides detection)
         """
         if temp is None:
             return True
@@ -320,7 +316,7 @@ class WeatherValidationUtils:
         temp_min, temp_max = limits["temperature"]
         is_valid = temp_min <= temp <= temp_max
 
-        # Registrar erro em Prometheus
+        # Register error in Prometheus
         if not is_valid and PROMETHEUS_AVAILABLE:
             from .geographic_utils import GeographicUtils
 
@@ -348,7 +344,7 @@ class WeatherValidationUtils:
         region: str | None = None,
     ) -> bool:
         """
-        Valida umidade relativa em %.
+        Validate relative humidity in %.
         """
         if humidity is None:
             return True
@@ -365,7 +361,7 @@ class WeatherValidationUtils:
         region: str | None = None,
     ) -> bool:
         """
-        Valida velocidade do vento em m/s.
+        Validate wind speed in m/s.
         """
         if wind is None:
             return True
@@ -382,7 +378,7 @@ class WeatherValidationUtils:
         region: str | None = None,
     ) -> bool:
         """
-        Valida precipitação em mm.
+        Validate precipitation in mm.
         """
         if precip is None:
             return True
@@ -399,7 +395,7 @@ class WeatherValidationUtils:
         region: str | None = None,
     ) -> bool:
         """
-        Valida radiação solar em MJ/m²/dia.
+        Validate solar radiation in MJ/m²/day.
         """
         if solar is None:
             return True
@@ -416,18 +412,18 @@ class WeatherValidationUtils:
         region: str | None = None,
     ) -> bool:
         """
-        Valida conjunto completo de dados diários com limites regionais.
+        Validate complete daily data set with regional limits.
 
         Args:
-            data: Dicionário com dados meteorológicos diários
-            lat: Latitude (para detecção de região)
-            lon: Longitude (para detecção de região)
-            region: Região explícita ("global", "brazil", "usa", "nordic")
+            data: Dictionary with daily meteorological data
+            lat: Latitude (for region detection)
+            lon: Longitude (for region detection)
+            region: Explicit region ("global", "brazil", "usa", "nordic")
 
         Returns:
-            True se todos os campos válidos estão dentro dos limites
+            True if all valid fields are within limits
 
-        Exemplo:
+        Example:
             >>> data = {
             ...     'temp_max': 35.0,
             ...     'temp_min': 20.0,
@@ -459,10 +455,10 @@ class WeatherValidationUtils:
 
 class WeatherAggregationUtils:
     """
-    Utilitários para agregação de dados meteorológicos.
+    Utilities for meteorological data aggregation.
 
-    Métodos comuns para agregar dados horários em diários
-    seguindo convenções meteorológicas padrão.
+    Common methods to aggregate hourly data into daily
+    following standard meteorological conventions.
     """
 
     @staticmethod
@@ -470,14 +466,14 @@ class WeatherAggregationUtils:
         values: list[float], method: str = "mean"
     ) -> float | None:
         """
-        Agrega valores de temperatura.
+        Aggregate temperature values.
 
         Args:
-            values: Lista de temperaturas
+            values: List of temperatures
             method: 'mean', 'max', 'min'
 
         Returns:
-            Temperatura agregada ou None
+            Aggregated temperature or None
         """
         if not values:
             return None
@@ -499,13 +495,13 @@ class WeatherAggregationUtils:
     @staticmethod
     def aggregate_precipitation(values: list[float]) -> float | None:
         """
-        Agrega precipitação (sempre soma).
+        Aggregate precipitation (always sum).
 
         Args:
-            values: Lista de precipitações horárias
+            values: List of hourly precipitation
 
         Returns:
-            Precipitação total ou None
+            Total precipitation or None
         """
         if not values:
             return None
@@ -521,14 +517,14 @@ class WeatherAggregationUtils:
         numerator: float | None, denominator: float | None
     ) -> float | None:
         """
-        Divisão segura que retorna None se inputs inválidos.
+        Safe division that returns None if inputs invalid.
 
         Args:
-            numerator: Numerador
-            denominator: Denominador
+            numerator: Numerator
+            denominator: Denominator
 
         Returns:
-            Resultado da divisão ou None
+            Division result or None
         """
         if numerator is None or denominator is None:
             return None
@@ -718,24 +714,24 @@ class WeatherAggregationUtils:
 
 class CacheUtils:
     """
-    Utilitários para cache de respostas HTTP de APIs climáticas.
+    Utilities for HTTP response caching from climate APIs.
 
-    Centraliza parsing de headers HTTP e cálculo de TTL para cache.
-    Usado por clientes como MET Norway para implementar conditional requests.
+    Centralizes HTTP header parsing and TTL calculation for caching.
+    Used by clients like MET Norway to implement conditional requests.
     """
 
     @staticmethod
     def parse_rfc1123_date(header: str | None) -> datetime | None:
         """
-        Parse RFC1123 date format (usado em Expires/Last-Modified headers).
+        Parse RFC1123 date format (used in Expires/Last-Modified headers).
 
         Args:
             header: Header string (e.g., "Tue, 16 Jun 2020 12:13:49 GMT")
 
         Returns:
-            Datetime timezone-aware UTC ou None
+            Timezone-aware UTC datetime or None
 
-        Exemplo:
+        Example:
             >>> expires = CacheUtils.parse_rfc1123_date(
             ...     "Tue, 16 Jun 2020 12:13:49 GMT"
             ... )
@@ -756,16 +752,16 @@ class CacheUtils:
         expires_dt: datetime | None, default_ttl: int = 3600
     ) -> int:
         """
-        Calcula TTL em segundos a partir de Expires datetime.
+        Calculate TTL in seconds from Expires datetime.
 
         Args:
-            expires_dt: Datetime de expiração (timezone-aware)
-            default_ttl: TTL padrão se expires_dt for None (default: 3600s)
+            expires_dt: Expiration datetime (timezone-aware)
+            default_ttl: Default TTL if expires_dt is None (default: 3600s)
 
         Returns:
-            TTL em segundos (min: 60s, max: 86400s = 24h)
+            TTL in seconds (min: 60s, max: 86400s = 24h)
 
-        Exemplo:
+        Example:
             >>> from datetime import datetime, timezone, timedelta
             >>> expires = datetime.now(timezone.utc) + timedelta(hours=2)
             >>> ttl = CacheUtils.calculate_cache_ttl(expires)
@@ -781,21 +777,21 @@ class CacheUtils:
             expires_dt = expires_dt.replace(tzinfo=timezone.utc)
 
         ttl = int((expires_dt - now).total_seconds())
-        # Cap entre 60s e 86400s (24h)
+        # Cap between 60s and 86400s (24h)
         return max(60, min(ttl, 86400))
 
 
 class METNorwayAggregationUtils:
     """
-    Utilitários especializados para agregação de dados MET Norway.
+    Specialized utilities for MET Norway data aggregation.
 
-    Movido de met_norway_client.py para centralizar lógica de agregação
-    e evitar duplicação de código.
+    Moved from met_norway_client.py to centralize aggregation logic
+    and avoid code duplication.
 
-    Responsabilidades:
-    - Agregar dados horários em diários
-    - Calcular estatísticas (mean, max, min, sum)
-    - Validar consistência de dados agregados
+    Responsibilities:
+    - Aggregate hourly data into daily
+    - Calculate statistics (mean, max, min, sum)
+    - Validate aggregated data consistency
     """
 
     @staticmethod
@@ -805,17 +801,17 @@ class METNorwayAggregationUtils:
         end_date: datetime,
     ) -> Dict[str, Dict[str, Any]]:
         """
-        Agrega dados horários MET Norway em buckets diários.
+        Aggregate MET Norway hourly data into daily buckets.
 
         Args:
-            timeseries: Lista de entradas horárias da API
-            start_date: Data inicial (timezone-aware)
-            end_date: Data final (timezone-aware)
+            timeseries: List of hourly entries from API
+            start_date: Start date (timezone-aware)
+            end_date: End date (timezone-aware)
 
         Returns:
-            Dict mapeando date -> dados agregados brutos
+            Dict mapping date -> raw aggregated data
 
-        Exemplo:
+        Example:
             >>> daily_raw = METNorwayAggregationUtils
             ...     .aggregate_hourly_to_daily(
             ...         timeseries, start_date, end_date
@@ -854,30 +850,30 @@ class METNorwayAggregationUtils:
                 dt = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
                 date_key = dt.date()
 
-                # Filtrar por período usando comparação segura
+                # Filter by period using safe comparison
                 if not (start_date <= dt <= end_date):
                     continue
 
                 day_data = daily_data[date_key]
 
-                # Extrair valores instantâneos
+                # Extract instantaneous values
                 instant = (
                     entry.get("data", {}).get("instant", {}).get("details", {})
                 )
 
-                # Temperatura
+                # Temperature
                 if (temp := instant.get("air_temperature")) is not None:
                     day_data["temp_values"].append(temp)
 
-                # Umidade
+                # Humidity
                 if (humidity := instant.get("relative_humidity")) is not None:
                     day_data["humidity_values"].append(humidity)
 
-                # Vento
+                # Wind
                 if (wind_speed := instant.get("wind_speed")) is not None:
                     day_data["wind_speed_values"].append(wind_speed)
 
-                # Precipitação 1h
+                # Precipitation 1h
                 next_1h = (
                     entry.get("data", {})
                     .get("next_1_hours", {})
@@ -887,7 +883,7 @@ class METNorwayAggregationUtils:
                 if precip_1h is not None:
                     day_data["precipitation_1h"].append(precip_1h)
 
-                # Precipitação 6h
+                # Precipitation 6h
                 next_6h = (
                     entry.get("data", {})
                     .get("next_6_hours", {})
@@ -897,7 +893,7 @@ class METNorwayAggregationUtils:
                 if precip_6h is not None:
                     day_data["precipitation_6h"].append(precip_6h)
 
-                # Temperaturas extremas 6h
+                # Extreme temperatures 6h
                 temp_max = next_6h.get("air_temperature_max")
                 if temp_max is not None:
                     day_data["temp_max_6h"].append(temp_max)
@@ -909,7 +905,7 @@ class METNorwayAggregationUtils:
 
             except Exception as e:
                 logger.warning(
-                    f"Erro processando entrada horária MET Norway: {e}"
+                    f"Error processing MET Norway hourly entry: {e}"
                 )
                 continue
 
@@ -921,32 +917,32 @@ class METNorwayAggregationUtils:
         weather_utils: WeatherConversionUtils,
     ) -> List[Any]:
         """
-        Calcula agregações diárias finais (mean, max, min, sum).
+        Calculate final daily aggregations (mean, max, min, sum).
 
         Args:
-            daily_raw_data: Dados brutos agrupados por data
-            weather_utils: Instância de WeatherConversionUtils
+            daily_raw_data: Raw data grouped by date
+            weather_utils: WeatherConversionUtils instance
 
         Returns:
-            Lista de registros diários agregados
+            List of aggregated daily records
 
-        Melhorias:
-        - Precipitação 6h: soma ponderada se múltiplos valores
-        - Conversão de vento 10m → 2m usando FAO-56
-        - Logging detalhado com logger.bind
+        Improvements:
+        - Precipitation 6h: weighted sum if multiple values
+        - Wind conversion 10m → 2m using FAO-56
+        - Detailed logging with logger.bind
         """
         result = []
 
         for date_key, day_values in daily_raw_data.items():
             try:
-                # Temperatura média
+                # Mean temperature
                 temp_mean = (
                     float(np.nanmean(day_values["temp_values"]))
                     if day_values["temp_values"]
                     else None
                 )
 
-                # Temperaturas extremas: preferir 6h, fallback instant
+                # Extreme temperatures: prefer 6h, fallback instant
                 temp_max = (
                     float(np.nanmax(day_values["temp_max_6h"]))
                     if day_values["temp_max_6h"]
@@ -967,14 +963,14 @@ class METNorwayAggregationUtils:
                     )
                 )
 
-                # Umidade média
+                # Mean humidity
                 humidity_mean = (
                     float(np.nanmean(day_values["humidity_values"]))
                     if day_values["humidity_values"]
                     else None
                 )
 
-                # Vento: converter 10m → 2m usando FAO-56
+                # Wind: convert 10m → 2m using FAO-56
                 wind_10m_mean = (
                     float(np.nanmean(day_values["wind_speed_values"]))
                     if day_values["wind_speed_values"]
@@ -986,31 +982,31 @@ class METNorwayAggregationUtils:
                     else None
                 )
 
-                # Precipitação: priorizar 1h, fallback 6h ponderado
+                # Precipitation: prioritize 1h, fallback weighted 6h
                 if day_values["precipitation_1h"]:
                     precipitation_sum = float(
                         np.sum(day_values["precipitation_1h"])
                     )
                 elif day_values["precipitation_6h"]:
-                    # MELHORIA: Soma ponderada se múltiplos valores
+                    # IMPROVEMENT: Weighted sum if multiple values
                     if len(day_values["precipitation_6h"]) > 1:
-                        # Média dos valores 6h (assume overlap)
+                        # Average 6h values (assumes overlap)
                         precipitation_sum = float(
                             np.mean(day_values["precipitation_6h"])
                         )
                     else:
-                        # Valor único: usar direto
+                        # Single value: use directly
                         precipitation_sum = float(
                             day_values["precipitation_6h"][0]
                         )
                     logger.bind(date=date_key).debug(
                         f"Precip 6h: {len(day_values['precipitation_6h'])} "
-                        f"valores → {precipitation_sum:.2f}mm"
+                        f"values -> {precipitation_sum:.2f}mm"
                     )
                 else:
                     precipitation_sum = 0.0
 
-                # Criar registro diário (dict genérico)
+                # Create daily record (generic dict)
                 daily_record = {
                     "date": date_key,
                     "temp_max": temp_max,
@@ -1024,31 +1020,31 @@ class METNorwayAggregationUtils:
                 result.append(daily_record)
 
             except Exception as e:
-                logger.bind(date=date_key).error(f"Erro agregando dia: {e}")
+                logger.bind(date=date_key).error(f"Error aggregating day: {e}")
                 continue
 
-        # Ordenar por data
+        # Sort by date
         result.sort(key=lambda x: x["date"])
         return result
 
     @staticmethod
     def validate_daily_data(daily_data: List[Dict[str, Any]]) -> bool:
         """
-        Valida consistência dos dados diários agregados.
+        Validate consistency of aggregated daily data.
 
         Args:
-            daily_data: Lista de registros diários (dicts)
+            daily_data: List of daily records (dicts)
 
         Returns:
-            True se dados consistentes, False caso contrário
+            True if data consistent, False otherwise
 
-        Validações:
+        Validations:
         - temp_max >= temp_min
         - 0 <= humidity <= 100
         - precipitation >= 0
         """
         if not daily_data:
-            logger.warning("Dados diários vazios")
+            logger.warning("Empty daily data")
             return False
 
         issues = []
@@ -1056,7 +1052,7 @@ class METNorwayAggregationUtils:
         for record in daily_data:
             date = record.get("date")
 
-            # Verificar temperaturas
+            # Check temperatures
             temp_max = record.get("temp_max")
             temp_min = record.get("temp_min")
             if (
@@ -1065,19 +1061,19 @@ class METNorwayAggregationUtils:
                 and temp_max < temp_min
             ):
                 issues.append(
-                    f"Temperatura inconsistente em {date}: "
+                    f"Inconsistent temperature on {date}: "
                     f"max={temp_max} < min={temp_min}"
                 )
 
-            # Verificar umidade
+            # Check humidity
             humidity = record.get("humidity_mean")
             if humidity is not None and not (0 <= humidity <= 100):
-                issues.append(f"Umidade fora do range em {date}: {humidity}%")
+                issues.append(f"Humidity out of range on {date}: {humidity}%")
 
-            # Verificar precipitação
+            # Check precipitation
             precip = record.get("precipitation_sum")
             if precip is not None and precip < 0:
-                issues.append(f"Precipitação negativa em {date}: {precip}mm")
+                issues.append(f"Negative precipitation on {date}: {precip}mm")
 
         if issues:
             for issue in issues:
@@ -1085,75 +1081,75 @@ class METNorwayAggregationUtils:
             return False
 
         logger.bind(validation="passed").debug(
-            f"Dados diários validados: {len(daily_data)} registros OK"
+            f"Daily data validated: {len(daily_data)} records OK"
         )
         return True
 
 
-# ✅ NOTA: TimezoneUtils foi movido para geographic_utils.py
-# para evitar importação circular (weather_utils usa geographic_utils)
+# NOTE: TimezoneUtils was moved to geographic_utils.py
+# to avoid circular import (weather_utils uses geographic_utils)
 
 
 class ElevationUtils:
     """
-    Utilitários para cálculos dependentes de elevação (FAO-56).
+    Utilities for elevation-dependent calculations (FAO-56).
 
-    ⚠️ IMPORTANTE: Elevação precisa é CRÍTICA para acurácia do ETo!
+    IMPORTANT: Precise elevation is CRITICAL for ETo accuracy!
 
-    Impacto da elevação nos cálculos FAO-56:
+    Elevation impact on FAO-56 calculations:
 
-    1. **Pressão Atmosférica (P)**:
-       - Varia ~12% por 1000m de elevação
-       - Exemplo: Nível do mar (0m) = 101.3 kPa
-                  Brasília (1172m) = 87.8 kPa (-13.3%)
+    1. **Atmospheric Pressure (P)**:
+       - Varies ~12% per 1000m elevation
+       - Example: Sea level (0m) = 101.3 kPa
+                  Brasilia (1172m) = 87.8 kPa (-13.3%)
                   La Paz (3640m) = 65.5 kPa (-35.3%)
 
-    2. **Constante Psicrométrica (γ)**:
-       - Proporcional à pressão atmosférica
+    2. **Psychrometric Constant (γ)**:
+       - Proportional to atmospheric pressure
        - γ = 0.665 × 10^-3 × P
-       - Afeta diretamente o termo aerodinâmico do ETo
+       - Directly affects aerodynamic term of ETo
 
-    3. **Radiação Solar**:
-       - Aumenta ~10% por 1000m (menos atmosfera)
-       - Afeta componente radiativo do ETo
+    3. **Solar Radiation**:
+       - Increases ~10% per 1000m (less atmosphere)
+       - Affects radiative component of ETo
 
-    📊 **Precisão da Elevação**:
-    - Open-Meteo: ~7-30m (aproximado)
+    **Elevation Precision**:
+    - Open-Meteo: ~7-30m (approximate)
     - OpenTopoData: ~1m (SRTM 30m/ASTER 30m)
-    - Diferença: até 30m pode causar erro de ~0.3% no ETo
+    - Difference: up to 30m can cause ~0.3% error in ETo
 
-    💡 **Uso Recomendado**:
-    Em eto_services.py:
-        1. Buscar elevação precisa: OpenTopoClient.get_elevation()
-        2. Calcular fatores: ElevationUtils.get_elevation_correction_factor()
-        3. Passar fatores para calculate_et0()
+    **Recommended Usage**:
+    In eto_services.py:
+        1. Get precise elevation: OpenTopoClient.get_elevation()
+        2. Calculate factors: ElevationUtils.get_elevation_correction_factor()
+        3. Pass factors to calculate_et0()
 
-    Referências:
+    References:
         Allen et al. (1998). FAO-56 Irrigation and Drainage Paper 56.
-        Capítulo 3: Equações 7, 8 (Pressão e Gamma).
+        Chapter 3: Equations 7, 8 (Pressure and Gamma).
     """
 
     @staticmethod
     def calculate_atmospheric_pressure(elevation: float) -> float:
         """
-        Calcula pressão atmosférica a partir da elevação (FAO-56 Eq. 7).
+        Calculate atmospheric pressure from elevation (FAO-56 Eq. 7).
 
-        Fórmula:
+        Formula:
         P = 101.3 × [(293 - 0.0065 × z) / 293]^5.26
 
         Args:
-            elevation: Elevação em metros
+            elevation: Elevation in meters
 
         Returns:
-            Pressão atmosférica em kPa
+            Atmospheric pressure in kPa
 
         Raises:
-            ValueError: Se elevação < -1000m (limite físico)
+            ValueError: If elevation < -1000m (physical limit)
 
-        Referência:
-            Allen et al. (1998). FAO-56, Capítulo 3, Equação 7, página 31.
+        Reference:
+            Allen et al. (1998). FAO-56, Chapter 3, Equation 7, page 31.
         """
-        # Validação: limite físico (Mar Morto: -430m)
+        # Validation: physical limit (Dead Sea: -430m)
         if elevation < -1000:
             raise ValueError(
                 f"Elevation too low: {elevation}m. Minimum: -1000m"
@@ -1164,18 +1160,18 @@ class ElevationUtils:
     @staticmethod
     def calculate_psychrometric_constant(elevation: float) -> float:
         """
-        Calcula constante psicrométrica a partir da elevação (FAO-56 Eq. 8).
+        Calculate psychrometric constant from elevation (FAO-56 Eq. 8).
 
-        Fórmula:
+        Formula:
         γ = 0.665 × 10^-3 × P
 
-        onde P é a pressão atmosférica (kPa) calculada da elevação.
+        where P is atmospheric pressure (kPa) calculated from elevation.
 
         Args:
-            elevation: Elevação em metros
+            elevation: Elevation in meters
 
         Returns:
-            Constante psicrométrica (kPa/°C)
+            Psychrometric constant (kPa/°C)
         """
         pressure = ElevationUtils.calculate_atmospheric_pressure(elevation)
         return 0.000665 * pressure
@@ -1186,21 +1182,21 @@ class ElevationUtils:
         elevation: float,
     ) -> float:
         """
-        Ajusta radiação solar para elevação.
+        Adjust solar radiation for elevation.
 
-        Radiação solar aumenta ~10% por 1000m de elevação
-        devido à menor absorção atmosférica.
+        Solar radiation increases ~10% per 1000m elevation
+        due to lower atmospheric absorption.
 
         Args:
-            radiation_sea_level: Radiação ao nível do mar (MJ/m²/dia)
-            elevation: Elevação em metros
+            radiation_sea_level: Radiation at sea level (MJ/m²/day)
+            elevation: Elevation in meters
 
         Returns:
-            Radiação ajustada (MJ/m²/dia)
+            Adjusted radiation (MJ/m²/day)
 
-        Nota:
-            Esta é uma aproximação. FAO-56 usa Ra (extraterrestre)
-            que já considera elevação via latitude e dia do ano.
+        Note:
+            This is an approximation. FAO-56 uses Ra (extraterrestrial)
+            which already accounts for elevation via latitude and day of year.
         """
         factor = 1.0 + (elevation / 1000.0) * 0.10
         return radiation_sea_level * factor
@@ -1208,17 +1204,17 @@ class ElevationUtils:
     @staticmethod
     def clear_sky_radiation(Ra: np.ndarray, elevation: float) -> np.ndarray:
         """
-        Calcula a radiação solar em céu claro (Rso) - FAO-56 Eq. 37.
+        Calculate clear sky solar radiation (Rso) - FAO-56 Eq. 37.
 
-        Radiação solar que seria recebida na ausência de nuvens.
-        Usado para calcular o fator de cobertura de nuvens (Rs/Rso).
+        Solar radiation that would be received in absence of clouds.
+        Used to calculate cloud cover factor (Rs/Rso).
 
         Args:
-            Ra: Radiação extraterrestre (MJ/m²/dia) - array ou escalar
-            elevation: Elevação do local (m)
+            Ra: Extraterrestrial radiation (MJ/m²/day) - array or scalar
+            elevation: Site elevation (m)
 
         Returns:
-            Rso: Radiação em céu claro (MJ/m²/dia) - array ou escalar
+            Rso: Clear sky radiation (MJ/m²/day) - array or scalar
         """
         Rso = (0.75 + 2e-5 * elevation) * Ra
         return Rso
@@ -1233,39 +1229,39 @@ class ElevationUtils:
         elevation: float,
     ) -> np.ndarray:
         """
-        Calcula a radiação de onda longa líquida (Rnl) - FAO-56 Eq. 39.
+        Calculate net longwave radiation (Rnl) - FAO-56 Eq. 39.
 
-        Radiação de onda longa emitida pela superfície e absorvida
-        pela atmosfera. Inclui efeitos de temperatura, umidade,
-        cobertura de nuvens e elevação.
+        Longwave radiation emitted by surface and absorbed
+        by atmosphere. Includes effects of temperature, humidity,
+        cloud cover and elevation.
 
         Args:
-            Rs: Radiação solar global medida (MJ/m²/dia)
-            Ra: Radiação extraterrestre (MJ/m²/dia)
-            Tmax: Temperatura máxima diária (°C)
-            Tmin: Temperatura mínima diária (°C)
-            ea: Pressão real de vapor (kPa)
-            elevation: Elevação do local (m)
+            Rs: Measured global solar radiation (MJ/m²/day)
+            Ra: Extraterrestrial radiation (MJ/m²/day)
+            Tmax: Daily maximum temperature (°C)
+            Tmin: Daily minimum temperature (°C)
+            ea: Actual vapor pressure (kPa)
+            elevation: Site elevation (m)
 
         Returns:
-            Rnl: Radiação de onda longa líquida (MJ/m²/dia)
+            Rnl: Net longwave radiation (MJ/m²/day)
         """
-        # Constante de Stefan-Boltzmann [MJ K⁻⁴ m⁻² day⁻¹]
+        # Stefan-Boltzmann constant [MJ K⁻⁴ m⁻² day⁻¹]
         sigma = 4.903e-9
 
-        # Converter temperaturas para Kelvin
+        # Convert temperatures to Kelvin
         Tmax_K = Tmax + 273.15
         Tmin_K = Tmin + 273.15
 
-        # Radiação em céu claro (Rso) - FAO-56 Eq. 37
+        # Clear sky radiation (Rso) - FAO-56 Eq. 37
         Rso = ElevationUtils.clear_sky_radiation(Ra, elevation)
 
-        # Fator de cobertura de nuvens (fcd) - FAO-56 Eq. 39
-        # Razão Rs/Rso com proteção contra divisão por zero
+        # Cloud cover factor (fcd) - FAO-56 Eq. 39
+        # Rs/Rso ratio with protection against division by zero
         ratio = np.divide(Rs, Rso, out=np.ones_like(Rs), where=Rso > 1e-6)
         fcd = np.clip(1.35 * ratio - 0.35, 0.3, 1.0)
 
-        # Radiação de onda longa líquida - FAO-56 Eq. 39
+        # Net longwave radiation - FAO-56 Eq. 39
         Rnl = (
             sigma
             * ((Tmax_K**4 + Tmin_K**4) / 2)
@@ -1278,21 +1274,21 @@ class ElevationUtils:
     @staticmethod
     def get_elevation_correction_factor(elevation: float) -> dict[str, float]:
         """
-        Calcula todos os fatores de correção por elevação para ETo FAO-56.
+        Calculate all elevation correction factors for FAO-56 ETo.
 
-        Usar elevação precisa de OpenTopoData (1m) para máxima
-        acurácia. Elevações aproximadas (Open-Meteo ~7-30m) podem causar
-        erros no ETo final.
+        Use precise elevation from OpenTopoData (1m) for maximum
+        accuracy. Approximate elevations (Open-Meteo ~7-30m) may cause
+        errors in final ETo.
 
         Args:
-            elevation: Elevação em metros (preferencialmente de OpenTopoData)
+            elevation: Elevation in meters (preferably from OpenTopoData)
 
         Returns:
-            Dicionário com fatores de correção FAO-56:
-            - pressure: Pressão atmosférica (kPa) - FAO-56 Eq. 7
-            - gamma: Constante psicrométrica (kPa/°C) - FAO-56 Eq. 8
-            - solar_factor: Fator multiplicativo para radiação solar
-            - elevation: Elevação usada (m)
+            Dictionary with FAO-56 correction factors:
+            - pressure: Atmospheric pressure (kPa) - FAO-56 Eq. 7
+            - gamma: Psychrometric constant (kPa/°C) - FAO-56 Eq. 8
+            - solar_factor: Multiplicative factor for solar radiation
+            - elevation: Elevation used (m)
         """
         pressure = ElevationUtils.calculate_atmospheric_pressure(elevation)
         gamma = ElevationUtils.calculate_psychrometric_constant(elevation)
@@ -1311,42 +1307,42 @@ class ElevationUtils:
         elevation_approx: float,
     ) -> dict[str, Any]:
         """
-        Compara impacto de diferentes fontes de elevação nos fatores FAO-56.
+        Compare impact of different elevation sources on FAO-56 factors.
 
-        Use para quantificar a melhoria ao usar OpenTopoData (1m) vs
+        Use to quantify improvement when using OpenTopoData (1m) vs
         Open-Meteo (~7-30m).
 
         Args:
-            elevation_precise: Elevação precisa (OpenTopoData, 1m)
-            elevation_approx: Elevação aproximada (Open-Meteo, ~7-30m)
+            elevation_precise: Precise elevation (OpenTopoData, 1m)
+            elevation_approx: Approximate elevation (Open-Meteo, ~7-30m)
 
         Returns:
-            Dicionário com análise comparativa:
-            - elevation_diff_m: Diferença absoluta (m)
-            - pressure_diff_kpa: Diferença de pressão (kPa)
-            - pressure_diff_pct: Diferença de pressão (%)
-            - gamma_diff_pct: Diferença de gamma (%)
-            - eto_impact_pct: Impacto estimado no ETo (%)
+            Dictionary with comparative analysis:
+            - elevation_diff_m: Absolute difference (m)
+            - pressure_diff_kpa: Pressure difference (kPa)
+            - pressure_diff_pct: Pressure difference (%)
+            - gamma_diff_pct: Gamma difference (%)
+            - eto_impact_pct: Estimated impact on ETo (%)
 
-        Exemplo:
-            > # OpenTopoData (preciso)
+        Example:
+            > # OpenTopoData (precise)
             > precise = 1172.0
-            > # Open-Meteo (aproximado)
+            > # Open-Meteo (approximate)
             > approx = 1150.0
 
             > impact = ElevationUtils.compare_elevation_impact(
                 precise, approx
             )
-            > print(f"Diferença elevação: {impact['elevation_diff_m']:.1f}m")
-            > print(f"Impacto no ETo: {impact['eto_impact_pct']:.3f}%")
-            Diferença elevação: 22.0m
-            Impacto no ETo: 0.245%
+            > print(f"Elevation difference: {impact['elevation_diff_m']:.1f}m")
+            > print(f"Impact on ETo: {impact['eto_impact_pct']:.3f}%")
+            Elevation difference: 22.0m
+            Impact on ETo: 0.245%
 
-        Interpretação:
-            - < 10m: Impacto negligenciável (< 0.1% no ETo)
-            - 10-30m: Impacto pequeno (0.1-0.3% no ETo)
-            - > 30m: Impacto significativo (> 0.3% no ETo)
-            - > 100m: Impacto crítico (> 1% no ETo)
+        Interpretation:
+            - < 10m: Negligible impact (< 0.1% on ETo)
+            - 10-30m: Small impact (0.1-0.3% on ETo)
+            - > 30m: Significant impact (> 0.3% on ETo)
+            - > 100m: Critical impact (> 1% on ETo)
         """
         factors_precise = ElevationUtils.get_elevation_correction_factor(
             elevation_precise
@@ -1365,8 +1361,8 @@ class ElevationUtils:
             / factors_approx["gamma"]
         ) * 100
 
-        # Estimar impacto no ETo (aproximação baseada em sensibilidade)
-        # ETo é ~50% sensível à pressão no termo aerodinâmico
+        # Estimate impact on ETo (approximation based on sensitivity)
+        # ETo is ~50% sensitive to pressure in aerodynamic term
         eto_impact_pct = pressure_diff_pct * 0.5
 
         return {
@@ -1380,13 +1376,13 @@ class ElevationUtils:
             "gamma_diff_pct": gamma_diff_pct,
             "eto_impact_pct": eto_impact_pct,
             "recommendation": (
-                "Negligenciável"
+                "Negligible"
                 if elevation_diff < 10
                 else (
-                    "Pequeno"
+                    "Small"
                     if elevation_diff < 30
                     else (
-                        "Significativo" if elevation_diff < 100 else "Crítico"
+                        "Significant" if elevation_diff < 100 else "Critical"
                     )
                 )
             ),

@@ -183,11 +183,13 @@ class EToFAO56:
         RH = df["RH2M"].to_numpy()
         Rs = np.maximum(df["ALLSKY_SFC_SW_DWN"].to_numpy(), 0.1)
 
-        # Detect wind column (WS10M or WS2M)
+        # Detect wind column (WS10M or WS2M) and determine measurement height
         if "WS10M" in df.columns:
             u_wind = df["WS10M"].to_numpy()
+            wind_height = 10.0  # Open-Meteo: wind at 10m
         elif "WS2M" in df.columns:
             u_wind = df["WS2M"].to_numpy()
+            wind_height = 2.0  # NASA POWER: wind already at 2m
         else:
             raise ValueError("Wind column not found (WS10M or WS2M)")
 
@@ -205,6 +207,7 @@ class EToFAO56:
         ea = (RH / 100.0) * es
         VPD = np.maximum(es - ea, 0.01)  # Minimum deficit
 
+        # Convert wind speed to 2m height (FAO-56 Eq. 47)
         u2 = EToFAO56.wind_speed_2m(u_wind, height=wind_height)
 
         Ra = EToFAO56.extraterrestrial_radiation(lat, doy)
@@ -327,9 +330,8 @@ def calculate_eto_from_source(source: str = "openmeteo"):
         df = pd.read_csv(file_path, parse_dates=["date"])
 
         # Vectorized calculation with correct wind height
-        df["eto_evaonline"] = EToFAO56.calculate_et0(
-            df, lat, elevation, wind_height=wind_height
-        )
+        # Wind height is auto-detected based on available column (WS10M or WS2M)
+        df["eto_evaonline"] = EToFAO56.calculate_et0(df, lat, elevation)
 
         # Statistics
         valid = df["eto_evaonline"].notna().sum()

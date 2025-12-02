@@ -1,31 +1,31 @@
 """
-Serviço de disponibilidade de fontes de dados climáticos.
+Climate data source availability service.
 
-Regras EVAonline (3 modos de operação):
-1. HISTORICAL_EMAIL: 1-90 dias, end ≤ hoje-30d (email, escolha livre)
-   - NASA POWER: 1990 → hoje (sem delay, evita overlap via validação)
-   - Open-Meteo Archive: 1990 → hoje-2d (com delay próprio)
-2. DASHBOARD_CURRENT: [7,14,21,30] dias, end=hoje fixo (web, dropdown)
-   - NASA POWER: hoje-29d → hoje (30 dias máx, sem delay)
-   - Open-Meteo Archive: hoje-29d → hoje-2d (com delay 2d)
-   - Open-Meteo Forecast: hoje-1d → hoje (preenche gap)
-3. DASHBOARD_FORECAST: 6 dias fixo (hoje → hoje+5d), previsões web
-   SE USA: radio button "Fusão das Bases" OU "Dados reais de estações"
-   - Fusão (padrão):
-     * Open-Meteo Forecast: hoje → hoje+5d
-     * MET Norway: hoje → hoje+5d (temp+humidity, global)
-     * NWS Forecast: hoje → hoje+5d (USA, previsão)
-   - Estações (alternativa USA):
-     * NWS Stations: apenas hoje (tempo real)
+EVAonline rules (3 operation modes):
+1. HISTORICAL_EMAIL: 1-90 days, end <= today-29d (email, free choice)
+   - NASA POWER: 1990 -> today (no delay, avoids overlap via validation)
+   - Open-Meteo Archive: 1990 -> today-2d (with 2d delay)
+2. DASHBOARD_CURRENT: [7,14,21,30] days, end=today fixed (web, dropdown)
+   - NASA POWER: today-29d -> today (30 days max, no delay)
+   - Open-Meteo Archive: today-29d -> today-2d (with 2d delay)
+   - Open-Meteo Forecast: today-1d -> today (fills gap)
+3. DASHBOARD_FORECAST: 6 days fixed (today -> today+5d), web forecasts
+   IF USA: radio button "Data Fusion" OR "Real station data"
+   - Fusion (default):
+     * Open-Meteo Forecast: today -> today+5d
+     * MET Norway: today -> today+5d (temp+humidity, global)
+     * NWS Forecast: today -> today+5d (USA, forecast)
+   - Stations (USA alternative):
+     * NWS Stations: today only (realtime)
 
-Responsabilidades:
-1. Define limites temporais de cada API por modo
-2. Filtra APIs por contexto (data + local + tipo)
-3. Determina variáveis disponíveis por região
-4. Retorna quais APIs funcionam para um pedido específico
+Responsibilities:
+1. Define temporal limits for each API by mode
+2. Filter APIs by context (date + location + type)
+3. Determine available variables by region
+4. Return which APIs work for a specific request
 
-IMPORTANTE: Detecção geográfica delega para GeographicUtils
-(SINGLE SOURCE OF TRUTH para bounding boxes USA, Nordic, etc)
+IMPORTANT: Geographic detection delegates to GeographicUtils
+(SINGLE SOURCE OF TRUTH for USA, Nordic bounding boxes, etc)
 """
 
 from datetime import date, timedelta
@@ -33,11 +33,11 @@ from enum import StrEnum
 from typing import Any
 from loguru import logger
 
-from validation_logic_eto.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.geographic_utils import GeographicUtils
 
 
-class OperationMode(StrEnum):  # StrEnum para compatibilidade Pydantic v2
-    """Enum para os 3 modos de operação EVAonline."""
+class OperationMode(StrEnum):  # StrEnum for Pydantic v2 compatibility
+    """Enum for the 3 EVAonline operation modes."""
 
     HISTORICAL_EMAIL = "historical_email"
     DASHBOARD_CURRENT = "dashboard_current"
@@ -45,67 +45,67 @@ class OperationMode(StrEnum):  # StrEnum para compatibilidade Pydantic v2
 
 
 class ClimateSourceAvailability:
-    """Determina disponibilidade de APIs baseado em contexto."""
+    """Determines API availability based on context."""
 
-    # Constante centralizada para data de início histórica (evita duplicação)
+    # Centralized constant for historical start date (avoids duplication)
     HISTORICAL_START_DATE = date(1990, 1, 1)
 
-    # Limites temporais das APIs (padronizados EVA)
+    # API temporal limits (EVA standardized)
     API_LIMITS: dict[str, dict[str, Any]] = {
-        # Histórico
+        # Historical
         "nasa_power": {
             "type": "historical",
-            "start_date": HISTORICAL_START_DATE,  # Referência centralizada
-            "end_date_offset": 0,  # hoje (sem delay)
+            "start_date": HISTORICAL_START_DATE,  # Centralized reference
+            "end_date_offset": 0,  # today (no delay)
             "coverage": "global",
         },
         "openmeteo_archive": {
             "type": "historical",
             "start_date": HISTORICAL_START_DATE,  # 1990-01-01
-            "end_date_offset": -30,  # hoje-30d (HISTORICAL_EMAIL)
+            "end_date_offset": -29,  # today-29d (HISTORICAL_EMAIL)
             "coverage": "global",
         },
-        # Previsão/Recent
+        # Forecast/Recent
         "openmeteo_forecast": {
             "type": "forecast",
-            "start_date_offset": -1,  # hoje-1d (DASHBOARD_FORECAST)
-            "end_date_offset": +5,  # hoje+5d
+            "start_date_offset": -1,  # today-1d (DASHBOARD_FORECAST)
+            "end_date_offset": +5,  # today+5d
             "coverage": "global",
         },
         "met_norway": {
             "type": "forecast",
-            "start_date_offset": 0,  # hoje
-            "end_date_offset": +5,  # hoje+5d
+            "start_date_offset": 0,  # today
+            "end_date_offset": +5,  # today+5d
             "coverage": "global",
-            # Global: temp+humidity apenas | Nordic: +wind+precipitation
+            # Global: temp+humidity only | Nordic: +wind+precipitation
             "regional_variables": True,
         },
         "nws_forecast": {
             "type": "forecast",
-            "start_date_offset": 0,  # hoje
-            "end_date_offset": +5,  # hoje+5d
+            "start_date_offset": 0,  # today
+            "end_date_offset": +5,  # today+5d
             "coverage": "usa",
         },
         "nws_stations": {
             "type": "realtime",
-            "start_date_offset": -1,  # hoje-1d
-            "end_date_offset": 0,  # agora
+            "start_date_offset": -1,  # today-1d
+            "end_date_offset": 0,  # now
             "coverage": "usa",
         },
     }
 
     @classmethod
     def _parse_date(cls, date_input: date | str) -> date:
-        """Parser privado e validado para datas (ISO ou date)."""
+        """Private and validated parser for dates (ISO or date)."""
         try:
             if isinstance(date_input, str):
                 return date.fromisoformat(
                     date_input
-                )  # Mais robusto que strptime
+                )  # More robust than strptime
             return date_input
         except ValueError as e:
-            logger.error(f"Data inválida '{date_input}': {e}")
-            raise ValueError("Formato de data inválido: use YYYY-MM-DD") from e
+            logger.error(f"Invalid date '{date_input}': {e}")
+            raise ValueError("Invalid date format: use YYYY-MM-DD") from e
 
     @classmethod
     def get_available_sources(
@@ -116,24 +116,24 @@ class ClimateSourceAvailability:
         lon: float,
     ) -> dict[str, dict[str, Any]]:
         """
-        Determina quais APIs estão disponíveis para o contexto fornecido.
+        Determines which APIs are available for the provided context.
 
-        NOTA: NÃO valida período (min/max dias).
-        Apenas verifica:
-        1. Cobertura geográfica (USA, Nordic, Global)
-        2. Limites temporais (cada API tem seus próprios limites)
+        NOTE: Does NOT validate period (min/max days).
+        Only checks:
+        1. Geographic coverage (USA, Nordic, Global)
+        2. Temporal limits (each API has its own limits)
 
-        Validação de modo (1-90 dias, etc) é responsabilidade de
+        Mode validation (1-90 days, etc) is responsibility of
         climate_validation.py::validate_request_mode()
 
         Args:
-            start_date: Data inicial (date ou YYYY-MM-DD)
-            end_date: Data final (date ou YYYY-MM-DD)
+            start_date: Start date (date or YYYY-MM-DD)
+            end_date: End date (date or YYYY-MM-DD)
             lat: Latitude
             lon: Longitude
 
         Returns:
-            Dict com APIs disponíveis e suas características:
+            Dict with available APIs and their characteristics:
             {
                 "nasa_power": {
                     "available": True,
@@ -143,21 +143,21 @@ class ClimateSourceAvailability:
                 ...
             }
         """
-        # Parser validado (com raise se inválido)
+        # Validated parser (raises if invalid)
         start_parsed = cls._parse_date(start_date)
         end_parsed = cls._parse_date(end_date)
 
-        # Validação básica: start <= end
+        # Basic validation: start <= end
         if start_parsed > end_parsed:
             raise ValueError(
-                f"start_date ({start_parsed}) deve ser <= "
+                f"start_date ({start_parsed}) must be <= "
                 f"end_date ({end_parsed})"
             )
 
-        today = date.today()  # Sempre use today() para consistência
+        today = date.today()  # Always use today() for consistency
         result: dict[str, dict[str, Any]] = {}
 
-        # Verificar localização (com log bind para contexto)
+        # Check location (with log bind for context)
         in_usa = GeographicUtils.is_in_usa(lat, lon)
         in_nordic = GeographicUtils.is_in_nordic(lat, lon)
 
@@ -168,36 +168,36 @@ class ClimateSourceAvailability:
             lon=lon,
             usa=in_usa,
             nordic=in_nordic,
-        ).debug("Verificando disponibilidade de fontes climáticas")
+        ).debug("Checking climate source availability")
 
-        # Avaliar cada API
+        # Evaluate each API
         for api_name, limits in cls.API_LIMITS.items():
             available = True
-            reasons: list[str] = []  # Lista para juntar motivos
+            reasons: list[str] = []  # List to join reasons
             variables: list[str] = []
 
-            # 1. Verificar cobertura geográfica
+            # 1. Check geographic coverage
             if limits["coverage"] == "usa" and not in_usa:
                 available = False
-                reasons.append("Não disponível fora dos EUA")
+                reasons.append("Not available outside USA")
 
-            # 2. Verificar limites temporais
+            # 2. Check temporal limits
             if available:
                 api_type = limits["type"]
                 if api_type == "historical":
-                    # APIs históricas: verificar limites absolutos
+                    # Historical APIs: check absolute limits
                     api_start = limits["start_date"]
                     api_end = today + timedelta(days=limits["end_date_offset"])
 
                     if start_parsed < api_start:
                         available = False
-                        reasons.append(f"Data inicial anterior a {api_start}")
+                        reasons.append(f"Start date before {api_start}")
                     if end_parsed > api_end:
                         available = False
-                        reasons.append(f"Data final posterior a {api_end}")
+                        reasons.append(f"End date after {api_end}")
 
                 elif api_type in ["forecast", "realtime"]:
-                    # APIs de forecast/realtime: verificar offsets
+                    # Forecast/realtime APIs: check offsets
                     api_start = today + timedelta(
                         days=limits.get("start_date_offset", 0)
                     )
@@ -206,18 +206,18 @@ class ClimateSourceAvailability:
                     )
 
                     logger.bind(api=api_name).debug(
-                        f"Range API: {api_start} to {api_end}, "
-                        f"solicitado: {start_parsed} to {end_parsed}"
+                        f"API range: {api_start} to {api_end}, "
+                        f"requested: {start_parsed} to {end_parsed}"
                     )
 
                     if start_parsed < api_start:
                         available = False
-                        reasons.append(f"Data inicial anterior a {api_start}")
+                        reasons.append(f"Start date before {api_start}")
                     if end_parsed > api_end:
                         available = False
-                        reasons.append(f"Data final posterior a {api_end}")
+                        reasons.append(f"End date after {api_end}")
 
-            # 3. Determinar variáveis disponíveis (se disponível)
+            # 3. Determine available variables (if available)
             if available:
                 if api_name == "met_norway" and limits.get(
                     "regional_variables"
@@ -230,19 +230,19 @@ class ClimateSourceAvailability:
                             "precipitation_sum",
                         ]
                         reasons.append(
-                            "Região Nordic: temp+humidity+wind+precip"
+                            "Nordic region: temp+humidity+wind+precip"
                         )
                     else:
                         variables = [
                             "temperature_2m_mean",
                             "relative_humidity_2m_mean",
                         ]
-                        reasons.append("Global: temp+humidity apenas")
+                        reasons.append("Global: temp+humidity only")
                 else:
                     variables = ["all"]
-                    reasons.append("Todas as variáveis disponíveis")
+                    reasons.append("All variables available")
 
-            # Adicionar ao resultado
+            # Add to result
             result[api_name] = {
                 "available": available,
                 "variables": variables,
@@ -251,7 +251,7 @@ class ClimateSourceAvailability:
                 "reason": (
                     " | ".join(reasons)
                     if reasons
-                    else "Disponível sem restrições"
+                    else "Available without restrictions"
                 ),
             }
 
@@ -266,16 +266,16 @@ class ClimateSourceAvailability:
         lon: float,
     ) -> list[str]:
         """
-        Retorna lista de APIs disponíveis (apenas nomes).
+        Returns list of available APIs (names only).
 
         Args:
-            start_date: Data inicial
-            end_date: Data final
+            start_date: Start date
+            end_date: End date
             lat: Latitude
             lon: Longitude
 
         Returns:
-            Lista de nomes das APIs disponíveis
+            List of available API names
         """
         available = cls.get_available_sources(start_date, end_date, lat, lon)
         return [
@@ -293,23 +293,23 @@ class ClimateSourceAvailability:
         end_date: date | str,
     ) -> bool:
         """
-        Verifica se uma fonte específica está disponível para o contexto.
+        Checks if a specific source is available for the context.
 
         Args:
-            source_id: ID da fonte (ex: 'nasa_power', 'openmeteo_archive')
-            mode: Modo de operação
-            start_date: Data inicial
-            end_date: Data final
+            source_id: Source ID (e.g., 'nasa_power', 'openmeteo_archive')
+            mode: Operation mode
+            start_date: Start date
+            end_date: End date
 
         Returns:
-            True se a fonte está disponível
+            True if the source is available
         """
         try:
-            # Converter mode para OperationMode se necessário
+            # Convert mode to OperationMode if needed
             if isinstance(mode, str):
                 mode = OperationMode(mode)
 
-            # Obter limites da API para o contexto
+            # Get API limits for context
             limits = cls.get_api_date_limits_for_context(mode)
 
             if source_id not in limits:
@@ -317,7 +317,7 @@ class ClimateSourceAvailability:
 
             api_limits = limits[source_id]
 
-            # Verificar se as datas estão dentro dos limites
+            # Check if dates are within limits
             start_parsed = cls._parse_date(start_date)
             end_parsed = cls._parse_date(end_date)
 
@@ -339,55 +339,55 @@ class ClimateSourceAvailability:
         today: date | None = None,
     ) -> dict[str, dict[str, Any]]:
         """
-        Retorna limites de data específicos por API e contexto.
+        Returns date limits specific to each API and context.
 
-        Regras EVAonline (ref: 15/11/2025 - Atualizado para data atual):
+        EVAonline rules (ref: 15/11/2025 - Updated to current date):
 
-        HISTORICAL_EMAIL (dados antigos, período LIVRE, entrega email):
-        - NASA POWER: 1990-01-01 → hoje (SEM delay)
-        - Open-Meteo Archive: 1990-01-01 → hoje-2d (com delay 2d)
-        - Usuário escolhe LIVREMENTE as datas (qualquer ano desde 1990)
-        - Restrições: mínimo 1 dia, máximo 90 dias de período
-        - Validação: end ≤ hoje-30d (conforme climate_validation.py)
+        HISTORICAL_EMAIL (old data, FREE period, email delivery):
+        - NASA POWER: 1990-01-01 -> today (NO delay)
+        - Open-Meteo Archive: 1990-01-01 -> today-2d (with 2d delay)
+        - User chooses dates FREELY (any year since 1990)
+        - Restrictions: minimum 1 day, maximum 90 days period
+        - Validation: end <= today-29d (per climate_validation.py)
 
-        Exemplos válidos (ref 15/11/2025):
-        - 18/07/2025 → 15/10/2025 (89 dias, 2025)
-        - 01/05/2013 → 29/07/2013 (90 dias, 2013)
-        - 01/01/1990 → 31/01/1990 (31 dias, 1990)
+        Valid examples (ref 15/11/2025):
+        - 18/07/2025 -> 15/10/2025 (89 days, 2025)
+        - 01/05/2013 -> 29/07/2013 (90 days, 2013)
+        - 01/01/1990 -> 31/01/1990 (31 days, 1990)
 
-        DASHBOARD_CURRENT (período DROPDOWN, dados recentes, web):
-        - Fim SEMPRE: hoje (15/11/2025)
-        - Início calculado: hoje - (dias-1) para incluir hoje
-        - NASA POWER: hoje-29d → hoje (SEM delay, cobertura completa)
-        - Open-Meteo Archive: hoje-29d → hoje-2d (com delay 2d)
-        - Open-Meteo Forecast: hoje-30d → hoje (preenche gap Archive)
+        DASHBOARD_CURRENT (DROPDOWN period, recent data, web):
+        - End ALWAYS: today (15/11/2025)
+        - Start calculated: today - (days-1) to include today
+        - NASA POWER: today-29d -> today (NO delay, complete coverage)
+        - Open-Meteo Archive: today-29d -> today-2d (with 2d delay)
+        - Open-Meteo Forecast: today-29d -> today (fills Archive gap)
 
-        Exemplos válidos:
-        - 17/10/2025 → 15/11/2025 (30 dias: hoje-29d a hoje)
-        - 09/11/2025 → 15/11/2025 (7 dias: hoje-6d a hoje)
+        Valid examples:
+        - 17/10/2025 -> 15/11/2025 (30 days: today-29d to today)
+        - 09/11/2025 -> 15/11/2025 (7 days: today-6d to today)
 
-        DASHBOARD_FORECAST (próximos 5 dias FIXO, web):
-        - Período: 6 dias total fixo (hoje até hoje+5d, inclusive)
-        - SE USA: radio button com 2 opções:
-          A) "Fusão das Bases" (padrão):
-             * Open-Meteo Forecast: hoje → hoje+5d
-             * MET Norway: hoje → hoje+5d (temp+humidity)
-             * NWS Forecast: hoje → hoje+5d (se solicitação <20h)
-          B) "Dados reais de estações" (alternativa):
-             * NWS Stations: apenas hoje (tempo real)
-             * Mostra quantas estações encontradas perto
-             * Todas variáveis disponíveis
-             * Botão download
+        DASHBOARD_FORECAST (next 5 days FIXED, web):
+        - Period: 6 total days fixed (today to today+5d, inclusive)
+        - IF USA: radio button with 2 options:
+          A) "Data Fusion" (default):
+             * Open-Meteo Forecast: today -> today+5d
+             * MET Norway: today -> today+5d (temp+humidity)
+             * NWS Forecast: today -> today+5d (if request <20h)
+          B) "Real station data" (alternative):
+             * NWS Stations: today only (realtime)
+             * Shows how many nearby stations found
+             * All variables available
+             * Download button
 
-        Exemplo (ref 15/11/2025):
-        - 15/11/2025 → 20/11/2025 (6 dias: 15,16,17,18,19,20)
+        Example (ref 15/11/2025):
+        - 15/11/2025 -> 20/11/2025 (6 days: 15,16,17,18,19,20)
 
         Args:
-            context: Contexto da requisição
-            today: Data de referência (default: hoje)
+            context: Request context
+            today: Reference date (default: today)
 
         Returns:
-            Dict com limites por API:
+            Dict with limits per API:
             {
                 "nasa_power": {
                     "start_date": date(1990, 1, 1),
@@ -400,7 +400,7 @@ class ClimateSourceAvailability:
         if today is None:
             today = date.today()
 
-        # Normalizar context para string
+        # Normalize context to string
         context_str = (
             context.value if isinstance(context, OperationMode) else context
         )
@@ -408,11 +408,11 @@ class ClimateSourceAvailability:
         limits: dict[str, dict[str, Any]] = {}
 
         if context_str == OperationMode.HISTORICAL_EMAIL.value:
-            # Historical_email: APIs fornecem de 1990 até hoje-30 dias
-            # Usuário escolhe LIVREMENTE dentro deste range
-            # Restrições: 1-90 dias de período
-            # Limite hoje-30d evita overlap com dashboard_current
-            historical_end = today - timedelta(days=30)
+            # Historical_email: APIs provide from 1990 to today-29 days
+            # User chooses FREELY within this range
+            # Restrictions: 1-90 days period
+            # Limit today-29d avoids overlap with dashboard_current
+            historical_end = today - timedelta(days=29)
             common_reason = (
                 f"Historical email: 1990 to {historical_end} "
                 "(user free choice, 1-90 days period)"
@@ -435,12 +435,12 @@ class ClimateSourceAvailability:
             }
 
         elif context_str == OperationMode.DASHBOARD_CURRENT.value:
-            # Dashboard_current: [7,14,21,30] dias dropdown, end=hoje fixo
-            # NASA POWER: sem delay, end = hoje
-            # Open-Meteo Archive: delay 2d, end = hoje-2d
-            # Open-Meteo Forecast: cobre gap dos últimos dias
-            # NOTA: start_date varia conforme período selecionado
-            dashboard_start_30d = today - timedelta(days=29)  # 30 dias max
+            # Dashboard_current: [7,14,21,30] days dropdown, end=today fixed
+            # NASA POWER: no delay, end = today
+            # Open-Meteo Archive: 2d delay, end = today-2d
+            # Open-Meteo Forecast: covers gap in recent days
+            # NOTE: start_date varies by selected period
+            dashboard_start_30d = today - timedelta(days=29)  # 30 days max
             archive_end = today - timedelta(days=2)
 
             limits["nasa_power"] = {
@@ -462,17 +462,17 @@ class ClimateSourceAvailability:
             }
 
             limits["openmeteo_forecast"] = {
-                "start_date": today - timedelta(days=30),
+                "start_date": today - timedelta(days=29),
                 "end_date": today,
                 "reason": (
-                    f"Dashboard current: {today - timedelta(days=30)} to "
+                    f"Dashboard current: {today - timedelta(days=29)} to "
                     f"{today} (fills archive gap, recent data)"
                 ),
             }
 
         elif context_str == OperationMode.DASHBOARD_FORECAST.value:
-            # Dashboard_forecast: próximos 5 dias fixo (hoje → hoje+5d)
-            # Período fixo: 6 dias total (inclusive)
+            # Dashboard_forecast: next 5 days fixed (today -> today+5d)
+            # Fixed period: 6 total days (inclusive)
             forecast_end = today + timedelta(days=5)
             common_reason = (
                 f"Dashboard forecast: {today} to {forecast_end} "
@@ -498,8 +498,8 @@ class ClimateSourceAvailability:
                 "coverage": "usa",
             }
 
-            # NWS Stations: opção alternativa para USA
-            # (radio button: "Fusão" vs "Estações reais")
+            # NWS Stations: alternative option for USA
+            # (radio button: "Fusion" vs "Real stations")
             limits["nws_stations"] = {
                 "start_date": today,
                 "end_date": today,

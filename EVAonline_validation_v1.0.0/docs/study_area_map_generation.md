@@ -6,7 +6,7 @@ This document describes how to generate the study area map showing the validatio
 
 The script `scripts/1_generate_matopiba_map.py` generates a professional two-panel map featuring:
 - **Left Panel**: Brazil context map with MATOPIBA region highlighted
-- **Right Panel**: Detailed MATOPIBA region with meteorological stations
+- **Right Panel**: Detailed MATOPIBA region with 16 meteorological stations
 - **Climate Zones**: Complete Köppen-Geiger climate classification overlay
 - **Legend**: Three-column climate classification legend
 - **Extras**: Scale bars, compass rose, and global location inset
@@ -40,40 +40,33 @@ The script `scripts/1_generate_matopiba_map.py` generates a professional two-pan
 
 ## Study Cities
 
-The script automatically loads station data from `data/map_data/cities_plot.csv` and filters cities with `PLOT=YES`. The map displays cities from the MATOPIBA region plus one control site.
+The script automatically loads station data from `data/map_data/cities_plot.csv` and filters cities with `PLOT=YES`. The map displays 16 cities from the MATOPIBA region.
 
 ### MATOPIBA Region (16 cities):
 
 **Maranhão (MA) - 4 cities:**
-- Balsas: -7.532°, -46.036°
-- Carolina: -7.334°, -47.467°
-- Imperatriz: -5.526°, -47.479°
-- Tasso Fragoso: -8.513°, -46.216°
+- Balsas: -7.529°, -46.046°
+- Carolina: -7.337°, -47.460°
+- Imperatriz: -5.536°, -47.479°
+- Tasso Fragoso: -8.480°, -45.744°
 
 **Tocantins (TO) - 4 cities:**
-- Araguaína: -7.191°, -48.207°
-- Campos Lindos: -7.991°, -46.866°
-- Pedro Afonso: -8.969°, -48.173°
-- Porto Nacional: -10.708°, -48.417°
+- Araguaína: -7.104°, -48.201°
+- Campos Lindos: -8.155°, -46.639°
+- Pedro Afonso: -8.969°, -48.177°
+- Porto Nacional: -10.711°, -48.406°
 
 **Piauí (PI) - 4 cities:**
-- Alvorada do Gurguéia: -8.429°, -43.774°
-- Bom Jesus: -9.077°, -44.358°
-- Corrente: -10.439°, -45.161°
-- Uruçuí: -7.234°, -44.549°
+- Alvorada do Gurguéia: -8.376°, -43.859°
+- Bom Jesus: -9.080°, -44.328°
+- Corrente: -10.429°, -45.173°
+- Uruçuí: -7.441°, -44.345°
 
 **Bahia (BA) - 4 cities:**
-- Barreiras: -12.153°, -44.990°
-- Formosa do Rio Preto: -11.047°, -45.195°
-- Luiz Eduardo Magalhães: -12.095°, -45.802°
-- São Desidério: -12.360°, -44.973°
-
-### Control Site (1 city):
-
-**São Paulo (SP), Brazil:**
-- Piracicaba: -22.725°, -47.649°
-  * Located outside MATOPIBA region
-  * Historical reference data available
+- Barreiras: -12.156°, -45.008°
+- Formosa do Rio Preto: -11.052°, -45.201°
+- Luiz Eduardo Magalhães: -12.153°, -45.830°
+- São Desidério: -12.361°, -44.974°
 
 ## Map Features
 
@@ -196,36 +189,13 @@ Draws alternating colored scale bars:
 ## Output Specifications
 
 ### Generated File
-- **Path**: `figures/study_area_map.png`
+- **Path**: `data/1_figures/study_area_map.png`
 - **Format**: PNG
 - **Resolution**: 300 DPI
-- **Figure Size**: 36×32 inches (10,800×9,600 pixels)
+- **Figure Size**: 10212 × 8220 pixels
 - **Layout**: Two-panel with bottom legend
-- **File Size**: ~15-25 MB (depending on compression)
+- **File Size**: 4.70 MB
 
-### Usage Contexts
-
-#### For README (Web Display):
-- Resize to 800-1200 pixels width
-- Maintain aspect ratio
-- Optimize for web (reduce file size)
-
-#### For Publication (SoftwareX):
-- Use original 300 DPI resolution
-- Dimensions: 10,800×9,600 pixels (as generated)
-- No post-processing needed
-- Meets journal requirements
-
-#### For Graphical Abstract (Zenodo):
-- Crop to single panel or key region
-- Resize to 1328×531 pixels (Zenodo recommendation)
-- Maintain aspect ratio if needed
-
-### Quality Features
-- **Vector-quality text**: All labels, titles, legends
-- **High-resolution rasters**: Climate zone boundaries
-- **Smooth gradients**: Color transitions in climate zones
-- **Print-ready**: 300 DPI suitable for publication
 
 ## Usage Instructions
 
@@ -256,7 +226,7 @@ python 1_generate_matopiba_map.py
 ### Expected Console Output
 ```
 Starting the generation of the adjusted map with selected stations...
-All required files found. Output: ../figures/study_area_map.png
+All required files found. Output: ../data/1_figures/study_area_map.png
 Loading Brazil GeoJSON...
 Brazil GeoJSON loaded successfully.
 Loading MATOPIBA GeoJSON...
@@ -265,15 +235,15 @@ Loading climate shapefile...
 Climate shapefile loaded successfully.
 Loading stations CSV...
 Stations CSV loaded successfully.
-Data loaded and processed. Total stations with PLOT=YES: 17
+Data loaded and processed. Total stations with PLOT=YES: 16
 Figure created. Starting plotting...
 Plotting climate layer for Brazil...
-Total stations plotted with PLOT=YES: 17
+Total stations plotted with PLOT=YES: 16
 Adding scale bar to MATOPIBA...
 Adding scale bar to Brazil...
 Plotting completed. Saving the file...
 
-Adjusted map saved as '../figures/study_area_map.png'!
+Adjusted map saved as '../data/1_figures/study_area_map.png'!
 ```
 
 ### Troubleshooting
@@ -382,14 +352,15 @@ EVAonline_validation_v1.0.0/
 ├── scripts/
 │   └── 1_generate_matopiba_map.py    # Main script
 ├── data/
-│   └── map_data/
-│       ├── cities_plot.csv           # Station metadata
-│       ├── BR_UF_2024.geojson       # Brazil boundaries
-│       ├── Matopiba_Perimetro.geojson  # MATOPIBA polygon
-│       └── shapefile_climate/
-│           └── clima_5000.shp       # Climate zones
-├── figures/
-│   └── study_area_map.png           # Output file
+│   ├── original_data/
+│   │   └── map_data/
+│   │       ├── cities_plot.csv           # Station metadata
+│   │       ├── BR_UF_2024.geojson       # Brazil boundaries
+│   │       ├── Matopiba_Perimetro.geojson  # MATOPIBA polygon
+│   │       └── shapefile_climate/
+│   │           └── clima_5000.shp       # Climate zones
+│   └── 1_figures/
+│       └── study_area_map.png           # Output file
 └── docs/
     └── study_area_map_generation.md  # This file
 ```
@@ -430,8 +401,3 @@ ax_main.set_extent([minx - 6.5, maxx + 0.2, miny - 2.0, maxy + 1.2], ...)
 ```
 
 ---
-
-**Script Version**: 1.0  
-**Last Updated**: November 26, 2025  
-**Author**: Ângela S. M. C. Soares, Prof. Carlos D. Maciel, Prof. Patricia A. A. Marques  
-**Contact**: [EVAonline Project](https://github.com/silvianesoares/EVAONLINE)

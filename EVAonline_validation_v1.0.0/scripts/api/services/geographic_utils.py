@@ -1,35 +1,35 @@
 """
-Utilidades geográficas centralizadas para detecção de região.
+Centralized geographic utilities for region detection.
 
-Este módulo centraliza TODAS as operações de geolocalização,
-eliminando duplicação de código em múltiplos módulos.
+This module centralizes ALL geolocation operations,
+eliminating code duplication across multiple modules.
 
-SINGLE SOURCE OF TRUTH para:
-- Detecção de coordenadas USA
-- Detecção de coordenadas Nordic (MET Norway 1km)
-- Detecção de coordenadas Brazil (validações rigorosas)
-- Detecção de coordenadas Global
+SINGLE SOURCE OF TRUTH for:
+- USA coordinate detection
+- Nordic coordinate detection (MET Norway 1km)
+- Brazil coordinate detection (rigorous validations)
+- Global coordinate detection
 
 Bounding Boxes:
-- USA Continental: -125°W a -66°W, 24°N a 49°N (NWS coverage)
-- Nordic Region: 4°E a 31°E, 54°N a 71.5°N (MET Norway 1km)
-- Brazil: -74°W a -34°W, -34°S a 5°N (Xavier et al. 2016)
-- Global: Qualquer coordenada dentro (-180, -90) a (180, 90)
+- USA Continental: -125°W to -66°W, 24°N to 49°N (NWS coverage)
+- Nordic Region: 4°E to 31°E, 54°N to 71.5°N (MET Norway 1km)
+- Brazil: -74°W to -34°W, -34°S to 5°N (Xavier et al. 2016)
+- Global: Any coordinate within (-180, -90) to (180, 90)
 
-Uso:
+Usage:
     from validation_logic_eto.api.services.geographic_utils import GeographicUtils
 
     if GeographicUtils.is_in_usa(lat, lon):
         # Use NWS
         pass
     elif GeographicUtils.is_in_nordic(lat, lon):
-        # Use MET Norway com precipitação de alta qualidade
+        # Use MET Norway with high quality precipitation
         pass
     elif GeographicUtils.is_in_brazil(lat, lon):
-        # Use validações Brazil-specific
+        # Use Brazil-specific validations
         pass
     else:
-        # Use Open-Meteo ou NASA POWER (global)
+        # Use Open-Meteo or NASA POWER (global)
         pass
 """
 
@@ -41,77 +41,77 @@ import inspect
 
 
 class GeographicUtils:
-    """Centraliza detecção geográfica com bounding boxes padronizadas."""
+    """Centralizes geographic detection with standardized bounding boxes."""
 
     # Bounding boxes: (lon_min, lat_min, lon_max, lat_max) = (W, S, E, N)
 
     USA_BBOX = (-125.0, 24.0, -66.0, 49.0)
     """
-    Bounding box USA Continental (NWS coverage).
+    USA Continental bounding box (NWS coverage).
 
-    Cobertura:
-        Longitude: -125°W (Costa Oeste) a -66°W (Costa Leste)
-        Latitude: 24°N (Sul da Flórida) a 49°N (Fronteira Canadá)
+    Coverage:
+        Longitude: -125°W (West Coast) to -66°W (East Coast)
+        Latitude: 24°N (South Florida) to 49°N (Canada Border)
 
-    Estados incluídos:
-        Todos os 48 estados contíguos
+    Included states:
+        All 48 contiguous states
 
-    Excluídos:
-        Alasca, Havaí, Porto Rico, territórios
+    Excluded:
+        Alaska, Hawaii, Puerto Rico, territories
     """
 
     NORDIC_BBOX = (4.0, 54.0, 31.0, 71.5)
     """
-    Bounding box Região Nórdica (MET Norway 1km alta qualidade).
+    Nordic Region bounding box (MET Norway 1km high quality).
 
-    Cobertura:
-        Longitude: 4°E (Dinamarca Oeste) a 31°E (Finlândia/Bálticos)
-        Latitude: 54°N (Dinamarca Sul) a 71.5°N (Noruega Norte)
+    Coverage:
+        Longitude: 4°E (West Denmark) to 31°E (Finland/Baltics)
+        Latitude: 54°N (South Denmark) to 71.5°N (North Norway)
 
-    Países incluídos:
-        Noruega, Dinamarca, Suécia, Finlândia, Estônia, Letônia, Lituânia
+    Included countries:
+        Norway, Denmark, Sweden, Finland, Estonia, Latvia, Lithuania
 
-    Qualidade especial:
-        - Resolução: 1 km (vs 9km global)
-        - Atualizações: A cada hora (vs 4x/dia global)
-        - Precipitação: Radar + crowdsourced (Netatmo)
-        - Pós-processamento: Extensivo com bias correction
+    Special quality:
+        - Resolution: 1 km (vs 9km global)
+        - Updates: Every hour (vs 4x/day global)
+        - Precipitation: Radar + crowdsourced (Netatmo)
+        - Post-processing: Extensive with bias correction
     """
 
     BRAZIL_BBOX = (-74.0, -34.0, -34.0, 5.0)
     """
-    Bounding box Brasil (Xavier et al. 2016).
+    Brazil bounding box (Xavier et al. 2016).
 
-    Cobertura:
-        Longitude: -74°W (Fronteira Oeste) a -34°W (Costa Leste)
-        Latitude: -34°S (Sul) a 5°N (Norte)
+    Coverage:
+        Longitude: -74°W (West Border) to -34°W (East Coast)
+        Latitude: -34°S (South) to 5°N (North)
 
-    Descrição:
-        Limites continentais do Brasil, incluindo todas as regiões.
-        Usado para validações específicas e otimização de fontes.
+    Description:
+        Continental Brazil boundaries, including all regions.
+        Used for specific validations and source optimization.
     """
 
     GLOBAL_BBOX = (-180.0, -90.0, 180.0, 90.0)
-    """Bounding box Global (qualquer coordenada válida)."""
+    """Global bounding box (any valid coordinate)."""
 
     @staticmethod
     def is_in_usa(lat: float, lon: float) -> bool:
         """
-        Verifica se coordenadas estão nos EUA continental.
+        Check if coordinates are in continental USA.
 
-        Usa bounding box: (-125.0, 24.0, -66.0, 49.0)
-        Cobertura: NWS API (National Weather Service)
+        Uses bounding box: (-125.0, 24.0, -66.0, 49.0)
+        Coverage: NWS API (National Weather Service)
 
         Args:
-            lat: Latitude (-90 a 90)
-            lon: Longitude (-180 a 180)
+            lat: Latitude (-90 to 90)
+            lon: Longitude (-180 to 180)
 
         Returns:
-            bool: True se dentro do bbox USA, False caso contrário
+            bool: True if inside USA bbox, False otherwise
 
-        Exemplo:
+        Example:
             if GeographicUtils.is_in_usa(39.7392, -104.9903):
-                # Denver, CO - dentro dos USA
+                # Denver, CO - inside USA
                 pass
         """
         lon_min, lat_min, lon_max, lat_max = GeographicUtils.USA_BBOX
@@ -119,8 +119,8 @@ class GeographicUtils:
 
         if not in_usa:
             logger.debug(
-                f"Coordenadas ({lat:.4f}, {lon:.4f}) "
-                f"FORA da cobertura USA Continental"
+                f"Coordinates ({lat:.4f}, {lon:.4f}) "
+                f"OUTSIDE USA Continental coverage"
             )
 
         return in_usa
@@ -128,21 +128,21 @@ class GeographicUtils:
     @staticmethod
     def is_in_nordic(lat: float, lon: float) -> bool:
         """
-        Verifica se coordenadas estão na região Nórdica.
+        Check if coordinates are in Nordic region.
 
-        Usa bounding box: (4.0, 54.0, 31.0, 71.5)
-        Cobertura: MET Norway 1km alta qualidade com radar
+        Uses bounding box: (4.0, 54.0, 31.0, 71.5)
+        Coverage: MET Norway 1km high quality with radar
 
         Args:
-            lat: Latitude (-90 a 90)
-            lon: Longitude (-180 a 180)
+            lat: Latitude (-90 to 90)
+            lon: Longitude (-180 to 180)
 
         Returns:
-            bool: True se dentro do bbox Nordic, False caso contrário
+            bool: True if inside Nordic bbox, False otherwise
 
-        Exemplo:
+        Example:
             if GeographicUtils.is_in_nordic(60.1699, 24.9384):
-                # Helsinki, Finland - dentro da região Nordic
+                # Helsinki, Finland - inside Nordic region
                 pass
         """
         lon_min, lat_min, lon_max, lat_max = GeographicUtils.NORDIC_BBOX
@@ -150,8 +150,8 @@ class GeographicUtils:
 
         if in_nordic:
             logger.debug(
-                f"Coordenadas ({lat:.4f}, {lon:.4f}) "
-                f"na região NORDIC (MET Norway 1km)"
+                f"Coordinates ({lat:.4f}, {lon:.4f}) "
+                f"in NORDIC region (MET Norway 1km)"
             )
 
         return in_nordic
@@ -159,21 +159,21 @@ class GeographicUtils:
     @staticmethod
     def is_in_brazil(lat: float, lon: float) -> bool:
         """
-        Verifica se coordenadas estão no Brasil.
+        Check if coordinates are in Brazil.
 
-        Usa bounding box: (-74.0, -34.0, -34.0, 5.0)
-        Cobertura: Território continental brasileiro
+        Uses bounding box: (-74.0, -34.0, -34.0, 5.0)
+        Coverage: Brazilian continental territory
 
         Args:
-            lat: Latitude (-90 a 90)
-            lon: Longitude (-180 a 180)
+            lat: Latitude (-90 to 90)
+            lon: Longitude (-180 to 180)
 
         Returns:
-            bool: True se dentro do bbox Brasil, False caso contrário
+            bool: True if inside Brazil bbox, False otherwise
 
-        Exemplo:
+        Example:
             if GeographicUtils.is_in_brazil(-23.5505, -46.6333):
-                # São Paulo, Brasil - dentro do território
+                # Sao Paulo, Brazil - inside territory
                 pass
         """
         lon_min, lat_min, lon_max, lat_max = GeographicUtils.BRAZIL_BBOX
@@ -181,7 +181,7 @@ class GeographicUtils:
 
         if in_brazil:
             logger.debug(
-                f"Coordenadas ({lat:.4f}, {lon:.4f}) " f"na região BRASIL"
+                f"Coordinates ({lat:.4f}, {lon:.4f}) " f"in BRAZIL region"
             )
 
         return in_brazil
@@ -189,15 +189,14 @@ class GeographicUtils:
     @staticmethod
     def is_valid_coordinate(lat: float, lon: float) -> bool:
         """
-        Verifica se coordenadas são válidas (dentro de (-180, -90) a
-        (180, 90)).
+        Check if coordinates are valid (within (-180, -90) to (180, 90)).
 
         Args:
             lat: Latitude
             lon: Longitude
 
         Returns:
-            bool: True se válido, False caso contrário
+            bool: True if valid, False otherwise
         """
         lon_min, lat_min, lon_max, lat_max = GeographicUtils.GLOBAL_BBOX
         return (lon_min <= lon <= lon_max) and (lat_min <= lat <= lat_max)
@@ -205,21 +204,21 @@ class GeographicUtils:
     @staticmethod
     def is_in_bbox(lat: float, lon: float, bbox: tuple) -> bool:
         """
-        Verifica se coordenadas estão dentro de um bounding box.
+        Check if coordinates are inside a bounding box.
 
         Args:
             lat: Latitude
             lon: Longitude
-            bbox: Tupla (west, south, east, north)
+            bbox: Tuple (west, south, east, north)
 
         Returns:
-            bool: True se dentro do bbox
+            bool: True if inside bbox
 
-        Exemplo:
-            # Verificar se está na região USA
+        Example:
+            # Check if inside USA region
             if GeographicUtils.is_in_bbox(40.7, -74.0,
                                           GeographicUtils.USA_BBOX):
-                # Dentro da região USA
+                # Inside USA region
                 pass
         """
         if not GeographicUtils.is_valid_coordinate(lat, lon):
@@ -233,7 +232,7 @@ class GeographicUtils:
         lat: float, lon: float
     ) -> Literal["usa", "nordic", "brazil", "global"]:
         """
-        Detecta região geográfica com prioridade:
+        Detect geographic region with priority:
         USA > Nordic > Brazil > Global.
 
         Args:
@@ -241,17 +240,17 @@ class GeographicUtils:
             lon: Longitude
 
         Returns:
-            str: Uma de "usa", "nordic", "brazil", "global"
+            str: One of "usa", "nordic", "brazil", "global"
 
-        Exemplo:
+        Example:
             region = GeographicUtils.get_region(39.7392, -104.9903)
-            # Retorna: "usa"
+            # Returns: "usa"
 
             region = GeographicUtils.get_region(60.1699, 24.9384)
-            # Retorna: "nordic"
+            # Returns: "nordic"
 
             region = GeographicUtils.get_region(-23.5505, -46.6333)
-            # Retorna: "brazil"
+            # Returns: "brazil"
         """
         if GeographicUtils.is_in_usa(lat, lon):
             return "usa"
@@ -265,72 +264,72 @@ class GeographicUtils:
     @staticmethod
     def get_recommended_sources(lat: float, lon: float) -> list[str]:
         """
-        Retorna lista de fontes climáticas recomendadas por região,
-        em ordem de prioridade. Padronizado para forecast (5 dias).
+        Return list of recommended climate sources by region,
+        in priority order. Standardized for forecast (5 days).
 
         Args:
             lat: Latitude
             lon: Longitude
 
         Returns:
-            list[str]: Lista ordenada de nomes de fontes (API priority)
+            list[str]: Ordered list of source names (API priority)
 
-        Regiões:
+        Regions:
             USA:
-                1. nws_forecast (previsão alta qualidade)
-                2. nws_stations (observações tempo real)
-                3. openmeteo_forecast (fallback global)
-                4. openmeteo_archive (histórico)
-                5. nasa_power (fallback universal)
+                1. nws_forecast (high quality forecast)
+                2. nws_stations (real-time observations)
+                3. openmeteo_forecast (global fallback)
+                4. openmeteo_archive (historical)
+                5. nasa_power (universal fallback)
 
             Nordic:
-                1. met_norway (previsão 1km com radar)
-                2. openmeteo_forecast (fallback global)
-                3. openmeteo_archive (histórico)
-                4. nasa_power (fallback universal)
+                1. met_norway (1km forecast with radar)
+                2. openmeteo_forecast (global fallback)
+                3. openmeteo_archive (historical)
+                4. nasa_power (universal fallback)
 
             Brazil:
-                1. openmeteo_forecast (melhor global para BR)
-                2. nasa_power (histórico validado)
-                3. openmeteo_archive (histórico)
+                1. openmeteo_forecast (best global for BR)
+                2. nasa_power (validated historical)
+                3. openmeteo_archive (historical)
 
             Global:
-                1. openmeteo_forecast (melhor global)
-                2. openmeteo_archive (histórico)
-                3. nasa_power (fallback universal)
+                1. openmeteo_forecast (best global)
+                2. openmeteo_archive (historical)
+                3. nasa_power (universal fallback)
 
-        Exemplo:
+        Example:
             sources = GeographicUtils.get_recommended_sources(
                 39.7392, -104.9903
             )
-            # Retorna: ["nws_forecast", "nws_stations",
+            # Returns: ["nws_forecast", "nws_stations",
             #           "openmeteo_forecast", ...]
         """
         region = GeographicUtils.get_region(lat, lon)
 
-        # Fontes base comuns (evita repetição)
+        # Common base sources (avoid repetition)
         base_sources = [
-            "openmeteo_forecast",  # Forecast global (5 dias)
-            "openmeteo_archive",  # Histórico fallback
+            "openmeteo_forecast",  # Global forecast (5 days)
+            "openmeteo_archive",  # Historical fallback
             "nasa_power",  # Universal
         ]
 
-        # Mapeamento região -> fontes prioritárias
+        # Region mapping -> priority sources
         region_sources = {
             "usa": [
-                "nws_forecast",  # Melhor para previsão
-                "nws_stations",  # Observações tempo real
+                "nws_forecast",  # Best for forecast
+                "nws_stations",  # Real-time observations
             ]
             + base_sources,
             "nordic": [
-                "met_norway",  # Melhor: 1km + radar
+                "met_norway",  # Best: 1km + radar
             ]
             + base_sources,
             "brazil": [
-                # Otimizado para Brasil: skip MET (precip baixa qualidade)
-                "openmeteo_forecast",  # Melhor global
-                "nasa_power",  # Histórico validado
-                "openmeteo_archive",  # Histórico
+                # Optimized for Brazil: skip MET (low quality precip)
+                "openmeteo_forecast",  # Best global
+                "nasa_power",  # Validated historical
+                "openmeteo_archive",  # Historical
             ],
         }
 
@@ -339,22 +338,22 @@ class GeographicUtils:
 
 class TimezoneUtils:
     """
-    Utilitários para manipulação consistente de timezone.
+    Utilities for consistent timezone handling.
 
-    Garante comparações corretas entre datetimes com/sem timezone.
-    Centralizado aqui para evitar importação circular com weather_utils.
+    Ensures correct comparisons between datetimes with/without timezone.
+    Centralized here to avoid circular import with weather_utils.
     """
 
     @staticmethod
     def ensure_naive(dt) -> datetime:
         """
-        Converte datetime para naive (sem timezone).
+        Convert datetime to naive (no timezone).
 
         Args:
-            dt: Datetime possivelmente timezone-aware
+            dt: Possibly timezone-aware datetime
 
         Returns:
-            Datetime naive (sem timezone)
+            Naive datetime (no timezone)
         """
         if not isinstance(dt, datetime):
             raise TypeError("dt must be a datetime instance")
@@ -365,13 +364,13 @@ class TimezoneUtils:
     @staticmethod
     def ensure_utc(dt) -> datetime:
         """
-        Converte datetime para UTC timezone-aware.
+        Convert datetime to UTC timezone-aware.
 
         Args:
-            dt: Datetime possivelmente naive
+            dt: Possibly naive datetime
 
         Returns:
-            Datetime UTC timezone-aware
+            UTC timezone-aware datetime
         """
         if not isinstance(dt, datetime):
             raise TypeError("dt must be a datetime instance")
@@ -382,14 +381,14 @@ class TimezoneUtils:
     @staticmethod
     def make_aware(dt, tz=None) -> datetime:
         """
-        Converte datetime naive para timezone-aware.
+        Convert naive datetime to timezone-aware.
 
         Args:
-            dt: Datetime possivelmente naive
+            dt: Possibly naive datetime
             tz: Timezone (default: UTC)
 
         Returns:
-            Datetime timezone-aware
+            Timezone-aware datetime
         """
         if not isinstance(dt, datetime):
             raise TypeError("dt must be a datetime instance")
@@ -401,15 +400,15 @@ class TimezoneUtils:
     @staticmethod
     def compare_dates_safe(dt1, dt2, comparison: str = "lt") -> bool:
         """
-        Compara duas datas de forma segura (ignorando timezone).
+        Compare two dates safely (ignoring timezone).
 
         Args:
-            dt1: Primeira data
-            dt2: Segunda data
+            dt1: First date
+            dt2: Second date
             comparison: 'lt', 'le', 'gt', 'ge', 'eq'
 
         Returns:
-            Resultado da comparação
+            Comparison result
         """
         if not isinstance(dt1, (datetime, date)) or not isinstance(
             dt2, (datetime, date)
@@ -435,27 +434,27 @@ class TimezoneUtils:
 
 def validate_coordinates(func):
     """
-    Decorador para validar coordenadas antes de executar função.
+    Decorator to validate coordinates before executing function.
 
-    Valida que lat/lon são floats válidos dentro de (-180, -90) a (180, 90).
-    Levanta ValueError se inválidas. Usa inspect para parsing robusto.
+    Validates that lat/lon are valid floats within (-180, -90) to (180, 90).
+    Raises ValueError if invalid. Uses inspect for robust parsing.
 
-    Uso:
+    Usage:
         @validate_coordinates
         def get_weather(lat: float, lon: float):
-            # lat/lon já validadas aqui
+            # lat/lon already validated here
             pass
     """
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        # Parsing robusto usando inspect.signature
+        # Robust parsing using inspect.signature
         sig = inspect.signature(func)
         try:
             bound = sig.bind(*args, **kwargs)
             bound.apply_defaults()
         except TypeError:
-            # Fallback para args posicionais se bind falhar
+            # Fallback to positional args if bind fails
             if len(args) >= 2:
                 lat, lon = args[-2], args[-1]
             elif "lat" in kwargs and "lon" in kwargs:
@@ -464,24 +463,24 @@ def validate_coordinates(func):
             else:
                 raise ValueError("Function must provide 'lat' and 'lon'")
         else:
-            # Extrai lat/lon de forma robusta (prioriza kwargs nomeados)
+            # Extract lat/lon robustly (prioritize named kwargs)
             lat = bound.arguments.get("lat")
             lon = bound.arguments.get("lon")
             if lat is None or lon is None:
-                # Fallback para args posicionais
+                # Fallback to positional args
                 if len(args) >= 2:
                     lat, lon = args[-2], args[-1]
                 else:
                     raise ValueError("Function must provide 'lat' and 'lon'")
 
-        # Converter para float se necessário
+        # Convert to float if necessary
         try:
             lat = float(lat)
             lon = float(lon)
         except (ValueError, TypeError):
             raise ValueError("lat and lon must be numeric")
 
-        # Validar coordenadas
+        # Validate coordinates
         if not GeographicUtils.is_valid_coordinate(lat, lon):
             raise ValueError(
                 f"Invalid coordinates: lat={lat}, lon={lon}. "

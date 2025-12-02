@@ -6,7 +6,7 @@ version: 1.0.0
 date-released: 2025-11-21
 url: "https://github.com/silvianesoares/EVAONLINE"
 repository-code: "https://github.com/silvianesoares/EVAONLINE"
-license: AGPL-3.0-or-later
+license: AGPL-3.0
 keywords:
   - reference evapotranspiration
   - FAO-56 Penman-Monteith
@@ -28,7 +28,7 @@ authors:
     given-names: "Ângela Silviane Moura Cunha"
     orcid: "https://orcid.org/0000-0002-1253-7193"
     affiliation: "Escola Superior de Agricultura Luiz de Queiroz da Universidade de São Paulo - USP, Brazil"
-    email: "angelasilviane@uft.edu.br"
+    email: "angelassilviane@gmail.com"
   - family-names: "Maciel"
     given-names: "Carlos Dias"
     orcid: "https://orcid.org/0000-0003-0137-6678"
@@ -44,7 +44,7 @@ abstract: >-
   (1) Xavier et al. BR-DWGD reference data (Brazilian Daily Weather Gridded Data,
   1961-2024, 0.1° resolution, 3,625+ weather stations), (2) NASA POWER reanalysis
   (MERRA-2, 0.5° resolution), (3) Open-Meteo Archive (ERA5-Land, ~9km resolution),
-  and (4) EVAonline Kalman fusion results. Data covers 17 Brazilian cities in the
+  and (4) EVAonline Kalman fusion results. Data covers 16 Brazilian cities in the
   MATOPIBA region plus Piracicaba (São Paulo) spanning 1991-2020, totaling 186,287
   daily observations. EVAonline demonstrates superior performance with MAE=0.42 mm/day,
   PBIAS=0.71%, and KGE=0.814, significantly outperforming NASA POWER (MAE=0.84,
@@ -53,32 +53,101 @@ abstract: >-
   reduction compared to individual sources. The repository includes raw data,
   validation scripts, statistical analyses, and reproducible Jupyter notebooks.
 references:
-  - type: dataset
+  - type: article
     authors:
       - family-names: "Xavier"
-        given-names: "Alexandre Candido"
-    title: "Brazilian Daily Weather Gridded Data (BR-DWGD)"
-    year: 2024
-    url: "https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data"
-    notes: "Daily gridded meteorological data covering 1961/01/01-2024/03/20, 0.1° x 0.1° resolution, based on 3,625+ weather stations"
+        given-names: "Alexandre C."
+      - family-names: "Scanlon"
+        given-names: "Bridget R."
+      - family-names: "King"
+        given-names: "Carey W."
+      - family-names: "Alves"
+        given-names: "Ana I."
+    title: "New improved Brazilian daily weather gridded data (1961-2020)"
+    journal: "International Journal of Climatology"
+    year: 2022
+    volume: 42
+    issue: 16
+    start: 8390
+    end: 8404
+    doi: "10.1002/joc.7731"
   - type: software
     authors:
       - family-names: "Zippenfenig"
         given-names: "Patrick"
     title: "Open-Meteo.com Weather API"
-    year: 2023
+    year: 2024
+    month: 12
+    version: "1.4.0"
     doi: "10.5281/zenodo.14582479"
-    url: "https://open-meteo.com/en/docs"
+    url: "https://doi.org/10.5281/zenodo.14582479"
+  - type: report
+    authors:
+      - family-names: "Allen"
+        given-names: "Richard G."
+      - family-names: "Pereira"
+        given-names: "Luis S."
+      - family-names: "Raes"
+        given-names: "Dirk"
+      - family-names: "Smith"
+        given-names: "Martin"
+    title: "Crop evapotranspiration — Guidelines for computing crop water requirements"
+    year: 1998
+    institution:
+      name: "Food and Agriculture Organization of the United Nations (FAO)"
+      city: "Rome"
+    number: "FAO Irrigation and Drainage Paper 56"
+    url: "http://www.fao.org/docrep/X0490E/X0490E00.htm"
+    notes: "accessed 17 may 2025"
+  - type: article
+    authors:
+      - family-names: "Kalman"
+        given-names: "R. E."
+    title: "A New Approach to Linear Filtering and Prediction Problems"
+    journal: "Journal of Basic Engineering"
+    year: 1960
+    month: 3
+    volume: 82
+    issue: 1
+    start: 35
+    end: 45
+  - type: article
+    authors:
+      - family-names: "Gupta"
+        given-names: "Hoshin V."
+      - family-names: "Kling"
+        given-names: "Harald"
+      - family-names: "Yilmaz"
+        given-names: "Koray K."
+      - family-names: "Martinez"
+        given-names: "Guillermo F."
+    title: "Decomposition of the mean squared error and NSE performance criteria: Implications for improving hydrological modelling"
+    journal: "Water Resources Research"
+    year: 2009
+    volume: 45
+    issue: 10
+    pages: "W10410"
+    doi: "10.1029/2008WR007248"
+  - type: report
+    authors:
+      - family-names: "Magalhães"
+        given-names: "Luciola Alves"
+      - family-names: "de Miranda"
+        given-names: "Evaristo Eduardo"
+    title: "MATOPIBA: Quadro Natural"
+    year: 2014
+    institution:
+      name: "Embrapa"
+      city: "Campinas"
+    number: "Nota Técnica GITE 5"
+    pages: 41
+    url: "https://www.infoteca.cnptia.embrapa.br/infoteca/handle/doc/1037412"
+    notes: "accessed 25 july 2025"
   - type: software
     title: "OpenTopoData: Open Elevation API"
     year: 2024
     url: "https://www.opentopodata.org/"
     notes: "Global elevation data API used for altitude-based corrections in FAO-56 Penman-Monteith calculations"
-  - type: software
-    title: "Open-Meteo Forecast API"
-    year: 2024
-    url: "https://open-meteo.com/en/docs"
-    notes: "7-day weather forecast API for real-time ETo predictions"
   - type: software
     title: "Met Norway Locationforecast API"
     year: 2024
@@ -89,9 +158,3 @@ references:
     year: 2024
     url: "https://www.weather.gov/documentation/services-web-api"
     notes: "Regional weather forecast and station data API for USA coverage"
-  - type: manual
-    title: "FAO Irrigation and Drainage Paper No. 56: Crop evapotranspiration"
-    authors:
-      - name: "Food and Agriculture Organization of the United Nations"
-    year: 1998
-    url: "http://www.fao.org/3/x0490e/x0490e00.htm"

@@ -687,7 +687,7 @@ class NWSForecastClient:
         """
         Estimate atmospheric pressure based on elevation.
 
-        Formula: P = 101.3 × [(293 - 0.0065 × z)/293]^5.255
+        Formula: P = 101.3 x [(293 - 0.0065 x z)/293]^5.255
         where z is elevation in meters.
 
         This is the barometric formula for standard atmosphere.
@@ -761,13 +761,6 @@ class NWSForecastClient:
 
         Returns:
             Solar radiation in MJ/m²/day, or None if sky cover unavailable
-
-        Example:
-            >>> client = NWSForecastClient()
-            >>> daily = await client.get_daily_forecast(39.7, -104.9)
-            >>> Rs = client.estimate_daily_solar_radiation(
-            ...     39.7, daily[0], method="usa_asos"
-            ... )
         """
         from math import radians, sin, pi
         import numpy as np
@@ -869,13 +862,6 @@ class NWSForecastClient:
         Raises:
             httpx.HTTPStatusError: If coordinates outside coverage
             ValueError: If grid metadata invalid
-
-        Example:
-            hourly = await client.get_forecast_data(39.7392, -104.9903)
-            print(f"Retrieved {len(hourly)} hourly periods")
-            for h in hourly[:3]:
-                print(f"{h.timestamp}: {h.temp_celsius}°C, "
-                      f"{h.wind_speed_ms} m/s, {h.precip_mm} mm")
         """
         grid_meta = await self._get_grid_metadata(lat, lon)
         forecast_data = await self._get_forecast_grid_data(
@@ -925,20 +911,6 @@ class NWSForecastClient:
 
         Returns:
             List of NWSDailyData (aggregated daily data, max 5 days)
-
-        Raises:
-            httpx.HTTPStatusError: If coordinates outside coverage
-            ValueError: If grid metadata invalid
-
-        Example:
-            daily = await client.get_daily_forecast_data(
-                39.7392, -104.9903
-            )
-            for day in daily:
-                print(
-                    f"{day.date.date()}: "
-                    f"{day.temp_max_celsius:.1f}°C max"
-                )
         """
         hourly_data = await self.get_forecast_data(lat, lon)
 
@@ -970,7 +942,7 @@ class NWSForecastClient:
             # Skip incomplete days (< 20 hours) to avoid bias
             if len(hours) < 20:
                 logger.warning(
-                    f"⚠️  Discarding {date_key}: only {len(hours)} hours "
+                    f"Discarding {date_key}: only {len(hours)} hours "
                     f"(partial days cause statistical bias)"
                 )
                 continue

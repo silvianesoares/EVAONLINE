@@ -8,17 +8,16 @@ This document provides detailed technical specifications for all climate data so
 
 ## 1. Xavier BR-DWGD (Reference Dataset)
 
-- **Full Name**: Brazilian Daily Weather Gridded Data
-- **Source**: Xavier et al. 2016, 2022 - Brazilian Daily Weather Gridded Data
+- **Full Name**: New improved Brazilian daily weather gridded data (1961–2020)
+- **Source**: Xavier et al. 2016, 2022 - Brazilian Daily  Weather  Gridded  Data (BR-DWGD)
 - **Website**: https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data
 - **Papers**:
-  - [Xavier et al. 2016 (IJC)](https://doi.org/10.1002/joc.4518) - Original dataset (1980-2013)
-  - [Xavier et al. 2022 (IJC)](https://doi.org/10.1002/joc.7731) - Updated dataset (1961-2020, extended to 2024)
+  - [Xavier et al. 2022 (IJC)](https://doi.org/10.1002/joc.7731) - Updated dataset (1961-2024)
 
 ### Technical Details
 
-- **Variables**: Daily ETo (mm/day) calculated from gridded meteorological data
-- **Spatial Resolution**: 0.25° × 0.25° (~27.5 km) covering entire Brazil
+- **Variables**: Precipitation (pr, mm) and evapotranspiration (ETo, mm).
+- **Spatial Resolution**: 0.1° x 0.1° (~11 km) just Brazil territory
 - **Temporal Coverage**: 1961-2024 (varies by city)
 - **Methodology**:
   - Interpolated from 3,625+ weather stations (INMET network)
@@ -61,7 +60,7 @@ This document provides detailed technical specifications for all climate data so
 
 ### Key Features
 
-- **Native 2m wind**: ✅ No height conversion needed for FAO-56
+- **Native 2m wind**: No height conversion needed for FAO-56
 - **Zero latency**: Updates daily with no delay
 - **Global coverage**: Suitable for any location worldwide
 - **Validated**: Cross-validated against ground stations globally
@@ -125,9 +124,7 @@ This document provides detailed technical specifications for all climate data so
 
 ### Attribution
 
-> "Weather data by Open-Meteo.com. Based on ERA5-Land reanalysis (ECMWF)."
-> 
-> Citation: Open-Meteo.com Weather API, https://open-meteo.com/, Accessed: [date]
+> Citation: Zippenfenig, P. (2023). Open-Meteo.com Weather API [Computer software]. Zenodo. https://doi.org/10.5281/ZENODO.7970649
 
 ---
 
@@ -135,7 +132,7 @@ This document provides detailed technical specifications for all climate data so
 
 - **Endpoint**: https://api.open-meteo.com/v1/forecast
 - **Purpose**: Gap filling for recent data (last 2 days) and short-term forecast
-- **Coverage**: (today - 30 days) to (today + 5 days) = 36 days total
+- **Coverage**: (today - 29 days) to (today + 5 days) = 35 days total
 
 ### Technical Details
 
@@ -149,10 +146,10 @@ This document provides detailed technical specifications for all climate data so
 
 | Data Source | Start Date | End Date | Update Frequency | Latency | Validation Period |
 |-------------|-----------|----------|-----------------|---------|------------------|
-| **Xavier BR-DWGD** | 1961-01-01 | 2024-12-31* | Annual updates | 6-12 months | 1991-01-01 to 2020-12-31 |
+| **Xavier BR-DWGD** | 1961-01-01 | 2024-12-31* | - | - | 1991-01-01 to 2020-12-31 |
 | **NASA POWER** | 1981-01-01 | Present | Daily | **0 days** | 1991-01-01 to 2020-12-31 |
-| **Open-Meteo Archive** | 1950-01-01 | Today - 2 days | Daily | **2 days** | 1991-01-01 to 2020-12-31 |
-| **Open-Meteo Forecast** | Today - 30 days | Today + 5 days | Hourly | **0 days** | Not used in validation |
+| **Open-Meteo Archive** | 1940-01-01 | Today - 2 days | Daily | **2 days** | 1991-01-01 to 2020-12-31 |
+| **Open-Meteo Forecast** | Today - 29 days | Today + 5 days | Daily | **0 days** | Not used in validation |
 
 **\*** Xavier dataset extended to 2024 but official publication covers 1961-2020
 
@@ -191,7 +188,6 @@ This document provides detailed technical specifications for all climate data so
 
 **Xavier BR-DWGD**:
 - Xavier, A. C., Scanlon, B. R., King, C. W., & Alves, A. I. (2022). New improved Brazilian daily weather gridded data (1961–2020). *International Journal of Climatology*, 42(16), 8390-8404. https://doi.org/10.1002/joc.7731
-- Xavier, A. C., King, C. W., & Scanlon, B. R. (2016). Daily gridded meteorological variables in Brazil (1980–2013). *International Journal of Climatology*, 36(6), 2644-2659. https://doi.org/10.1002/joc.4518
 
 **FAO-56 Penman-Monteith**:
 - Allen, R.G., Pereira, L.S., Raes, D., Smith, M., 1998. Crop evapotranspiration - Guidelines for computing crop water requirements. FAO Irrigation and Drainage Paper 56. Food and Agriculture Organization, Rome. http://www.fao.org/3/x0490e/x0490e00.htm

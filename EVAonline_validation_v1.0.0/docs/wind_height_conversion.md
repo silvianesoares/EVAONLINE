@@ -103,10 +103,10 @@ Allen et al. (1998) explicitly state:
 ### 3. Consistency Across Sources
 
 Ensures all data sources use the **same reference height** (2m):
-- ✅ NASA POWER: Native 2m (no conversion)
-- ✅ Open-Meteo: Converted 10m → 2m
-- ✅ Xavier: Weather stations typically 10m, converted to 2m
-- ✅ EVAonline: Automatic detection and conversion
+- NASA POWER: Native 2m (no conversion)
+- Open-Meteo: Converted 10m → 2m
+- Xavier: Weather stations typically 10m, converted to 2m
+- EVAonline: Automatic detection and conversion
 
 ### 4. Validation Integrity
 
@@ -124,112 +124,53 @@ Xavier BR-DWGD (reference dataset) uses 2m wind from weather stations:
 **Script 4**: `4_calculate_eto_data_from_openmeteo_or_nasapower.py`
 
 ```python
-# NASA POWER - no conversion needed
-if source == "nasa":
-    u2 = data['WS2M']  # Already at 2m ✅
+@staticmethod
+def wind_speed_2m(
+    u_height: np.ndarray, height: float = 10.0
+) -> np.ndarray:
+    """
+    Eq. 47 - Logarithmic wind speed conversion to 2m height
 
-# Open-Meteo - automatic conversion
-elif source == "openmeteo":
-    u10 = data['wind_speed_10m_mean']  # At 10m
-    u2 = u10 * 0.748  # Convert to 2m using FAO-56 Eq. 47 ✅
-    
-    # Log conversion for transparency
-    logger.info(f"Applied wind height conversion: 10m → 2m (factor: 0.748)")
+    Args:
+        u_height: Wind speed at measurement height (m/s)
+        height: Measurement height (m) - default 10m for Open-Meteo
+                NASA POWER data is already at 2m, so height=2.0
+
+    Returns:
+        Wind speed at 2m height (m/s)
+    """
+    if height == 2.0:
+        # NASA POWER is already at 2m
+        return np.maximum(u_height, 0.5)
+
+    # FAO-56 Eq. 47 logarithmic conversion
+    u2 = u_height * (4.87 / np.log(67.8 * height - 5.42))
+    return np.maximum(u2, 0.5)  # Physical minimum limit
 ```
 
-**Scripts 5-7**: Use Script 4 outputs (already converted)
-
-### Production System
-
-**Backend**: `backend/api/services/eto_services.py`
-
+**Usage in calculation**:
 ```python
-class EToCalculationService:
-    def preprocess_weather_data(self, data: dict, source: str) -> dict:
-        """Automatically detect and convert wind height."""
-        
-        if source == "openmeteo":
-            # ERA5-Land provides 10m wind
-            if 'wind_speed_10m_mean' in data:
-                data['wind_speed_2m'] = data['wind_speed_10m_mean'] * 0.748
-                data['_wind_converted'] = True
-                
-        elif source == "nasa":
-            # MERRA-2 provides 2m wind (native)
-            data['wind_speed_2m'] = data['WS2M']
-            data['_wind_converted'] = False
-            
-        return data
+# Wind height detection and conversion
+if "WS10M" in df.columns:
+    u_wind = df["WS10M"].to_numpy()
+    wind_height = 10.0  # Open-Meteo
+elif "WS2M" in df.columns:
+    u_wind = df["WS2M"].to_numpy()
+    wind_height = 2.0   # NASA POWER
+else:
+    raise ValueError("Wind column not found (WS10M or WS2M)")
+
+# Apply conversion (handles both cases)
+u2 = EToFAO56.wind_speed_2m(u_wind, height=wind_height)
 ```
 
----
 
-## Verification
+### Key Features of the Implementation
 
-### Visual Inspection
-
-All validation plots (`data/6_validation_full_pipeline/xavier_validation/plots/`) show:
-- Time series with Xavier reference
-- Scatter plots with regression lines
-- Residual analysis
-
-If conversion is **not applied**, you'll see:
-- ❌ Systematic positive bias (points above 1:1 line)
-- ❌ PBIAS > +10%
-- ❌ Poor KGE (<0.5)
-
-### Statistical Validation
-
-**Comparison** (17 cities, 1991-2020):
-
-| Method | Wind Conversion | PBIAS (%) | KGE | NSE |
-|--------|----------------|-----------|-----|-----|
-| Open-Meteo **without conversion** | ❌ Not applied | +13.02 | 0.432 | -0.547 |
-| Open-Meteo **with conversion** | ✅ Applied (×0.748) | ~+8-10 | ~0.5-0.6 | ~0.2-0.4 |
-| EVAonline **with conversion + Kalman** | ✅ Applied | **+0.71** | **0.814** | **0.676** |
-
----
-
-## Common Mistakes to Avoid
-
-### ❌ Mistake 1: Using 10m wind directly
-
-```python
-# WRONG - causes 15% overestimation
-eto = calculate_eto_fao56(
-    wind_speed=data['wind_speed_10m_mean'],  # ❌ Using 10m directly
-    # ... other variables
-)
-```
-
-### ❌ Mistake 2: Incorrect conversion factor
-
-```python
-# WRONG - incorrect factor
-u2 = u10 * 0.8  # ❌ Should be 0.748, not 0.8
-```
-
-### ❌ Mistake 3: Converting NASA POWER wind
-
-```python
-# WRONG - NASA already provides 2m wind
-u2 = data['WS2M'] * 0.748  # ❌ Do NOT convert NASA wind!
-```
-
-### ✅ Correct Implementation
-
-```python
-# CORRECT - check source and apply conversion only when needed
-if source == "openmeteo":
-    u2 = data['wind_speed_10m_mean'] * 0.748  # ✅ Convert 10m → 2m
-elif source == "nasa":
-    u2 = data['WS2M']  # ✅ Already at 2m, no conversion
-
-eto = calculate_eto_fao56(
-    wind_speed=u2,  # ✅ Always use 2m wind
-    # ... other variables
-)
-```
+1. **Automatic Detection**: The function checks measurement height and only converts if needed
+2. **Safe Defaults**: NASA POWER (2m) returns wind unchanged; Open-Meteo (10m) applies conversion
+3. **Physical Limits**: Enforces minimum wind speed (0.5 m/s) to prevent unphysical values
+4. **Vectorized**: Uses NumPy for efficient batch processing of entire time series
 
 ---
 
@@ -241,23 +182,4 @@ eto = calculate_eto_fao56(
   - **Wind speed section**: Chapter 3, p. 47-48
   - Full text: http://www.fao.org/3/x0490e/x0490e00.htm
 
-**Supporting References**:
-- Allen, R.G., 1996. Assessing integrity of weather data for reference evapotranspiration estimation. *Journal of Irrigation and Drainage Engineering*, 122(2), 97-106.
-- ASCE-EWRI, 2005. The ASCE standardized reference evapotranspiration equation. Technical Committee report. American Society of Civil Engineers, Reston, VA.
-
 ---
-
-## Summary
-
-✅ **Key Takeaways**:
-
-1. **Always use 2m wind** for FAO-56 Penman-Monteith
-2. **Convert 10m → 2m** using factor 0.748 (from FAO-56 Eq. 47)
-3. **NASA POWER**: No conversion needed (native 2m)
-4. **Open-Meteo**: Conversion required (native 10m)
-5. **Impact**: Not converting causes ~15% ETo overestimation
-6. **EVAonline**: Automatic detection and conversion applied
-
-**Formula**: $u_2 = u_{10} \times 0.748$
-
-**Validation**: Xavier BR-DWGD uses 2m wind (our reference standard)

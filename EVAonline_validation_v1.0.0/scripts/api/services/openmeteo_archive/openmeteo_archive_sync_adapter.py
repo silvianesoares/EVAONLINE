@@ -1,13 +1,13 @@
 """
-Sync Adapter para Open-Meteo Archive API.
+Sync Adapter for Open-Meteo Archive API.
 
-Converte chamadas assíncronas do OpenMeteoArchiveClient em métodos síncronos
-para compatibilidade com Celery tasks.
+Converts asynchronous calls from OpenMeteoArchiveClient to synchronous methods
+for compatibility with Celery tasks.
 
 API: https://archive-api.open-meteo.com/v1/archive
-Cobertura: Global
-Período: 1940-01-01 até hoje-30 dias (modo historical_email)
-Licença: CC BY 4.0 (atribuição obrigatória)
+Coverage: Global
+Period: 1990-01-01 to today-30 days (historical_email mode)
+License: CC BY 4.0 (attribution required)
 
 Variables (10):
 - Temperature: max, mean, min (°C)
@@ -18,9 +18,9 @@ Variables (10):
 - ET0 FAO Evapotranspiration (mm)
 
 CACHE STRATEGY (Nov 2025):
-- Redis cache via ClimateCache (recomendado)
+- Redis cache via ClimateCache (recommended)
 - Fallback: requests_cache local
-- TTL: 24h (dados históricos estáveis)
+- TTL: 24h (historical data is stable)
 """
 
 import asyncio
@@ -37,28 +37,28 @@ from .openmeteo_archive_client import (
 
 class OpenMeteoArchiveSyncAdapter:
     """
-    Adapter síncrono para Open-Meteo Archive API.
+    Synchronous adapter for Open-Meteo Archive API.
 
-    Historical data: 1940-01-01 até hoje-30 dias (modo historical_email)
-    Models: best_match (melhor modelo disponível)
-    Variables: 10 variáveis climáticas (T, RH, Wind, Solar, Precip, ET0)
-    Wind unit: m/s (metros por segundo)
-    Cache: Redis compartilhado (TTL 24h)
+    Historical data: 1990-01-01 to today-30 days (historical_email mode)
+    Models: best_match (best available model)
+    Variables: 10 climate variables (T, RH, Wind, Solar, Precip, ET0)
+    Wind unit: m/s (meters per second)
+    Cache: Shared Redis (TTL 24h)
     """
 
     def __init__(self, cache: Any | None = None, cache_dir: str = ".cache"):
         """
-        Inicializa adapter síncrono.
+        Initialize synchronous adapter.
 
         Args:
             cache: Optional ClimateCache instance (Redis)
-            cache_dir: Diretório para fallback cache (TTL: 24h)
+            cache_dir: Directory for fallback cache (TTL: 24h)
 
         Features:
-            - Historical data: 1940 até hoje-30d (modo historical_email)
-            - Best match model: Seleciona melhor modelo disponível
-            - 10 climate variables com unidades padronizadas
-            - Redis cache compartilhado entre workers
+            - Historical data: 1990 to today-29d (historical_email mode)
+            - Best match model: Selects best available model
+            - 10 climate variables with standardized units
+            - Shared Redis cache between workers
         """
         self.cache = cache  # Redis cache (opcional)
         self.cache_dir = cache_dir
@@ -66,7 +66,7 @@ class OpenMeteoArchiveSyncAdapter:
         cache_type = "Redis" if cache else "Local"
         logger.info(
             f"OpenMeteoArchiveSyncAdapter initialized ({cache_type} cache, "
-            f"1990 to today-30d)"
+            f"1990 to today-29d)"
         )
 
     def get_daily_data_sync(
@@ -77,16 +77,16 @@ class OpenMeteoArchiveSyncAdapter:
         end_date: Union[str, datetime],
     ) -> List[Dict[str, Any]]:
         """
-        Baixa dados históricos de forma SÍNCRONA.
+        Download historical data SYNCHRONOUSLY.
 
         Args:
-            lat: Latitude (-90 a 90)
-            lon: Longitude (-180 a 180)
-            start_date: Data inicial (str ou datetime)
-            end_date: Data final (str ou datetime)
+            lat: Latitude (-90 to 90)
+            lon: Longitude (-180 to 180)
+            start_date: Start date (str or datetime)
+            end_date: End date (str or datetime)
 
         Returns:
-            Lista de dicionários com dados diários
+            List of dictionaries with daily data
         """
         # Convert strings to datetime if needed
         if isinstance(start_date, str):
@@ -94,13 +94,13 @@ class OpenMeteoArchiveSyncAdapter:
         if isinstance(end_date, str):
             end_date = datetime.fromisoformat(end_date)
 
-        # Executar async de forma segura
+        # Execute async safely
         try:
-            # Tentar obter loop existente
+            # Try to get existing loop
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # Loop já está rodando (contexto de servidor async)
-                # Criar nova task no loop existente
+                # Loop is already running (async server context)
+                # Create new task in existing loop
                 import concurrent.futures
 
                 with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -110,12 +110,12 @@ class OpenMeteoArchiveSyncAdapter:
                     )
                     return future.result()
             else:
-                # Loop existe mas não está rodando
+                # Loop exists but is not running
                 return loop.run_until_complete(
                     self._async_get_data(lat, lon, start_date, end_date)
                 )
         except RuntimeError:
-            # Nenhum loop, criar um novo
+            # No loop exists, create a new one
             return asyncio.run(
                 self._async_get_data(lat, lon, start_date, end_date)
             )
@@ -128,9 +128,9 @@ class OpenMeteoArchiveSyncAdapter:
         end_date: datetime,
     ) -> List[Dict[str, Any]]:
         """
-        Implementação async interna.
+        Internal async implementation.
 
-        Usa best_match model e wind_speed_unit=ms para consistência.
+        Uses best_match model and wind_speed_unit=ms for consistency.
         """
         try:
             client = OpenMeteoArchiveClient(
@@ -144,16 +144,16 @@ class OpenMeteoArchiveSyncAdapter:
                 end_date=end_date.strftime("%Y-%m-%d"),
             )
 
-            # Extrair dados do response
+            # Extract data from response
             daily_data = response["climate_data"]
             dates = pd.to_datetime(daily_data["dates"])
 
-            # Converter para lista de dicionários
+            # Convert to list of dictionaries
             records = []
             for i, date in enumerate(dates):
                 record = {"date": date.date()}
 
-                # Adicionar todas as variáveis disponíveis
+                # Add all available variables
                 for key, values in daily_data.items():
                     if key != "dates" and isinstance(values, list):
                         record[key] = values[i] if i < len(values) else None
@@ -161,42 +161,42 @@ class OpenMeteoArchiveSyncAdapter:
                 records.append(record)
 
             logger.info(
-                f"Archive: obtidos {len(records)} registros diários "
-                f"para ({lat:.4f}, {lon:.4f}) | "
-                f"10 variáveis climáticas"
+                f"Archive: obtained {len(records)} daily records "
+                f"for ({lat:.4f}, {lon:.4f}) | "
+                f"10 climate variables"
             )
             return records
 
         except Exception as e:
-            logger.error(f"Archive: erro ao baixar dados: {str(e)}")
+            logger.error(f"Archive: error downloading data: {str(e)}")
             raise
 
     def health_check_sync(self) -> bool:
         """
-        Verifica se Archive API está acessível (síncrono).
+        Check if Archive API is accessible (synchronous).
 
-        Testa com coordenadas de Brasília e data histórica
-        segura (1 ano atrás).
-        Valida resposta com best_match model.
+        Tests with Brasilia coordinates and safe historical date
+        (1 year ago).
+        Validates response with best_match model.
 
         Returns:
-            True se API está funcionando, False caso contrário
+            True if API is working, False otherwise
         """
         return asyncio.run(self._async_health_check())
 
     async def _async_health_check(self) -> bool:
         """
-        Implementação async do health check.
+        Async implementation of health check.
 
-        Testa: Brasília, 1990-01-01, best_match model.
+        Tests: Brasilia, 1990-01-01, best_match model.
         """
         try:
             client = OpenMeteoArchiveClient(
                 cache=self.cache, cache_dir=self.cache_dir
             )
 
-            # Testar com coordenadas de referência (Brasília)
-            # Usar data histórica segura (início do período de validação)
+            # Test with reference coordinates (Brasilia)
+            # Use safe historical date (start of validation period)
             test_date = datetime(1990, 1, 1).date()
             response = await client.get_climate_data(
                 lat=-15.7939,
@@ -210,17 +210,17 @@ class OpenMeteoArchiveSyncAdapter:
             return has_data and has_dates
 
         except Exception as e:
-            logger.error(f"Archive: health check falhou: {str(e)}")
+            logger.error(f"Archive: health check failed: {str(e)}")
             return False
 
     @staticmethod
     def get_info() -> Dict[str, Any]:
         """
-        Retorna informações sobre a fonte de dados Archive API.
+        Return information about the Archive API data source.
 
-        Inclui: coverage, period, variables, license, model, units.
+        Includes: coverage, period, variables, license, model, units.
 
         Returns:
-            Dicionário com metadados completos da fonte
+            Dictionary with complete source metadata
         """
         return OpenMeteoArchiveClient.get_info()

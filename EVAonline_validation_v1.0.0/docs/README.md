@@ -4,18 +4,20 @@ This folder contains detailed technical documentation for the EVAonline validati
 
 ---
 
-## 📚 Available Documents
+## Available Documents
 
 ### Core Technical Documentation
 
 #### 1. [Data Sources Specifications](data_sources_specifications.md)
 **What**: Detailed technical specifications for all climate data sources  
 **Includes**:
-- Xavier BR-DWGD (Brazilian reference dataset)
-- NASA POWER (MERRA-2 global reanalysis)
-- Open-Meteo Archive (ERA5-Land high-resolution)
-- Open-Meteo Forecast (gap filling)
+- **Xavier BR-DWGD** (Brazilian reference dataset, 1961-2024)
+- **NASA POWER** (MERRA-2 global reanalysis, 1981-present)
+- **Open-Meteo Archive** (ERA5-Land high-resolution, 1940-present)
+- **Open-Meteo Forecast** (7-day forecast, gap filling)
+- Technical details: spatial resolution, temporal coverage, methodology
 - API endpoints, variables, resolutions, coverage periods
+- Quality control, validation steps, cross-validation results
 - Data attribution and licenses
 
 **Read this if**: You need to understand the data sources, their technical characteristics, or how to cite them.
@@ -39,15 +41,18 @@ This folder contains detailed technical documentation for the EVAonline validati
 #### 3. [Kalman Methodology](kalman_methodology.md)
 **What**: Adaptive Kalman filter implementation details  
 **Includes**:
+- **6 climate data sources** (NASA POWER, Open-Meteo Archive/Forecast, Met.no, NWS Forecast/Stations)
+- Why NASA POWER + Open-Meteo Archive for validation
+- **Two operational modes**: Adaptive (with Xavier normals) vs Simple (without normals)
 - Why Kalman fusion (vs simple averaging or ML)
-- Mathematical formulation (state-space model)
-- EVAonline configuration (Q, R matrices)
-- Bias correction strategy (Xavier climatology)
+- Mathematical formulation (scalar state-space model)
+- Three-stage pipeline: Climate Fusion → ETo Calculation → ETo Refinement
+- EVAonline configuration (Q adaptive, R 3-level anomaly detection)
+- Bias correction strategy (monthly, Xavier climatology)
 - Validation results and convergence analysis
-- Sensitivity analysis
-- Comparison with alternatives
+- Sensitivity analysis and comparison with alternatives
 
-**Read this if**: You want to understand how EVAonline fuses multiple data sources or implement similar methodology.
+**Read this if**: You want to understand how EVAonline fuses multiple data sources, the two operational modes, or implement similar methodology.
 
 ---
 
@@ -68,33 +73,36 @@ This folder contains detailed technical documentation for the EVAonline validati
 #### 5. [API Operational Details](api_operational_details.md)
 **What**: Practical guidelines for using NASA POWER and Open-Meteo APIs  
 **Includes**:
-- Temporal coverage and latency
-- Gap filling strategy (2-day Open-Meteo delay)
+- Temporal coverage and latency (NASA: 0 days, Open-Meteo Archive: 2 days, Xavier: 6-12 months)
+- **Multi-API gap filling strategy** (handling Open-Meteo 2-day delay)
+- Three operational scenarios: Real-time Dashboard, Historical Analysis, Forecast
 - Rate limits and caching best practices
-- Operational scenarios (dashboard, historical, forecast)
 - Error handling and fallback strategies
-- API request examples
+- API request examples with code
+- Performance considerations
 
-**Read this if**: You're building an application that uses these APIs or need to understand operational constraints.
+**Read this if**: You're building an application that uses these APIs or need to understand operational constraints and latency.
 
 ---
 
 #### 6. [EVAonline Architecture](evaonline_architecture.md)
 **What**: System architecture and design patterns
 **Includes**:
-- Clean Hexagonal DDD Architecture (Clean + Hexagonal + Domain-Driven Design)
+- **Clean Hexagonal DDD Architecture** (Clean + Hexagonal + Domain-Driven Design)
 - Architectural principles (Dependency Rule, Ports & Adapters, SOLID)
-- Layer structure (Presentation, Application, Domain, Infrastructure)
-- Data flow: Request → Response with timing
-- Operating modes (Dashboard Current, Forecast, Historical Email)
+- Layer structure: Presentation → Application → Domain → Infrastructure
+- Entities, Value Objects, Repositories, Services pattern
+- Data flow: Request → Response with timing diagrams
+- Three operating modes: Dashboard Current, Forecast, Historical Email
 - Performance metrics (2.0-3.5s cache miss, <100ms cache hit)
+- Technology stack and design decisions
 
-**Read this if**: You want to understand the system design or implement similar architecture.
+**Read this if**: You want to understand the system design, architectural patterns, or implement similar architecture.
 
 ---
 
 #### 7. [Elevation Integration](elevation_integration.md)
-**What**: OpenTopoData integration for elevation correction
+**What**: OpenTopoData integration for elevation correction (documento em português)
 **Includes**:
 - Why elevation matters (affects pressure, gamma, solar radiation)
 - Impact on ETo calculation (+13.3% at 1172m vs sea level)
@@ -102,6 +110,7 @@ This folder contains detailed technical documentation for the EVAonline validati
 - Priority strategy (user input → OpenTopo → Open-Meteo → default)
 - FAO-56 correction factors (pressure, psychrometric constant, radiation)
 - Practical examples with code
+- Implementation in EVAonline services
 
 **Read this if**: You're implementing FAO-56 with elevation correction or need precise altitude data.
 
@@ -110,14 +119,16 @@ This folder contains detailed technical documentation for the EVAonline validati
 #### 8. [Regional Validation System](regional_validation_system.md)
 **What**: Region-specific validation limits for climate data
 **Includes**:
-- Brazil limits (Xavier et al. 2016, 2022): -30 to 50°C, 0-450mm precipitation
-- Global limits (world records): -90 to 60°C, 0-2000mm precipitation
+- **Brazil limits** (Xavier et al. 2016, 2022): -30 to 50°C, 0-450mm precipitation
+- **Global limits** (world records): -90 to 60°C, 0-2000mm precipitation
 - Impact comparison (Brazil 3× more restrictive on temperature)
+- Wind speed limits (0-100 m/s)
+- Relative humidity limits (0-100%)
 - Technical implementation in `weather_utils.py` and `data_preprocessing.py`
 - Usage examples for different regions
 - How to add new regions (e.g., Australia)
 
-**Read this if**: You're processing regional climate data or need scientific validation limits.
+**Read this if**: You're processing regional climate data, need scientific validation limits, or implementing quality control.
 
 ---
 
@@ -144,7 +155,7 @@ This folder contains detailed technical documentation for the EVAonline validati
 
 ---
 
-## 🗺️ Documentation Roadmap
+## Documentation Roadmap
 
 ```
 Start Here
@@ -156,10 +167,11 @@ Start Here
     │       └─→ data_sources_specifications.md
     │
     ├─→ Implementing FAO-56?
-    │       └─→ wind_height_conversion.md
+    │       ├─→ wind_height_conversion.md
+    │       └─→ elevation_integration.md
     │
     ├─→ Understanding Kalman Fusion?
-    │       └─→ kalman_methodology.md
+    │       └─→ kalman_methodology.md (includes 6 data sources)
     │
     ├─→ Analyzing Performance?
     │       └─→ performance_analysis.md
@@ -173,13 +185,13 @@ Start Here
 
 ---
 
-## 📖 Quick Reference
+## Quick Reference
 
 ### For Researchers
 
 **Priority reading**:
 1. [Performance Analysis](performance_analysis.md) - Validation results
-2. [Kalman Methodology](kalman_methodology.md) - Technical approach
+2. [Kalman Methodology](kalman_methodology.md) - Technical approach (Adaptive vs Simple modes)
 3. [Data Sources Specifications](data_sources_specifications.md) - Data provenance
 4. [Regional Validation System](regional_validation_system.md) - Xavier et al. limits
 5. [Validation Report](validation_eto_evaonline.md) - Complete results
@@ -188,11 +200,11 @@ Start Here
 
 **Priority reading**:
 1. [EVAonline Architecture](evaonline_architecture.md) - System design
-2. [API Operational Details](api_operational_details.md) - Practical guidelines
-3. [Wind Height Conversion](wind_height_conversion.md) - Critical implementation detail
-4. [Data Sources Specifications](data_sources_specifications.md) - API endpoints
-5. [Elevation Integration](elevation_integration.md) - Altitude correction
-6. [Kalman Methodology](kalman_methodology.md) - Algorithm implementation
+2. [Kalman Methodology](kalman_methodology.md) - **6 data sources** + Algorithm implementation
+3. [API Operational Details](api_operational_details.md) - Practical guidelines
+4. [Data Sources Specifications](data_sources_specifications.md) - API endpoints & technical specs
+5. [Wind Height Conversion](wind_height_conversion.md) - Critical implementation detail
+6. [Elevation Integration](elevation_integration.md) - Altitude correction
 7. [Regional Validation System](regional_validation_system.md) - Validation by region
 
 ### For Practitioners
@@ -205,7 +217,7 @@ Start Here
 
 ---
 
-## 🔗 External Resources
+## External Resources
 
 ### FAO-56 Penman-Monteith
 - [FAO-56 Full Text](http://www.fao.org/3/x0490e/x0490e00.htm)
@@ -225,14 +237,14 @@ Start Here
 
 ---
 
-## 📧 Questions?
+## Questions?
 
 - **GitHub Issues**: https://github.com/angelasilviane/EVAONLINE/issues
 - **Email**: [Add contact email]
 
 ---
 
-## ✏️ Contributing to Documentation
+## Contributing to Documentation
 
 Found an error or want to improve documentation?
 

@@ -5,15 +5,15 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-# Imports de módulos de validação canônicos
+# Imports from canonical validation modules
 try:
-    from validation_logic_eto.api.services.climate_validation import (
+    from scripts.api.services.climate_validation import (
         ClimateValidationService,
     )
-    from validation_logic_eto.api.services.climate_source_manager import (
+    from scripts.api.services.climate_source_manager import (
         ClimateSourceManager,
     )
-    from validation_logic_eto.api.services.climate_factory import ClimateClientFactory
+
 except ImportError:
     from ...api.services.climate_validation import (
         ClimateValidationService,
@@ -21,7 +21,6 @@ except ImportError:
     from ...api.services.climate_source_manager import (
         ClimateSourceManager,
     )
-    from ...api.services.climate_factory import ClimateClientFactory
 
 
 async def download_weather_data(
@@ -32,69 +31,67 @@ async def download_weather_data(
     latitude: float,
 ) -> Tuple[pd.DataFrame, List[str]]:
     """
-    Baixa dados meteorológicos das fontes especificadas para as coordenadas
-    e período.
+    Download weather data from specified sources for coordinates and period.
 
-    Integração completa com módulos de validação e seleção:
-    - climate_validation.py: Valida coordenadas, datas e modo
-    - climate_source_manager.py: Seleciona fontes por local e modo
-    - climate_factory.py: Cria clientes com cache injetado
+    Complete integration with validation and selection modules:
+    - climate_validation.py: Validates coordinates, dates and mode
+    - climate_source_manager.py: Selects sources by location and mode
 
-    Fontes suportadas:
-    - "nasa_power": NASA POWER (global, 1990+, domínio público)
+    Supported sources:
+    - "nasa_power": NASA POWER (global, 1990+, public domain)
     - "openmeteo_archive": Open-Meteo Archive (global, 1990+, CC BY 4.0)
-    - "openmeteo_forecast": Open-Meteo Forecast (global, hoje±5d, CC BY 4.0)
+    - "openmeteo_forecast": Open-Meteo Forecast (global, today±5d, CC BY 4.0)
     - "met_norway": MET Norway Locationforecast (global, CC BY 4.0)
-    - "nws_forecast": NWS Forecast (USA, previsões, domínio público)
-    - "nws_stations": NWS Stations (USA, estações, domínio público)
-    - "data fusion": Fusiona múltiplas fontes disponíveis (Kalman Ensemble)
+    - "nws_forecast": NWS Forecast (USA, forecasts, public domain)
+    - "nws_stations": NWS Stations (USA, stations, public domain)
+    - "data fusion": Fuses multiple available sources (Kalman Ensemble)
 
     Args:
-        data_source: Fonte de dados (str ou list de fontes)
-        data_inicial: Data inicial no formato YYYY-MM-DD
-        data_final: Data final no formato YYYY-MM-DD
-        longitude: Longitude (-180 a 180)
-        latitude: Latitude (-90 a 90)
+        data_source: Data source (str or list of sources)
+        data_inicial: Start date in YYYY-MM-DD format
+        data_final: End date in YYYY-MM-DD format
+        longitude: Longitude (-180 to 180)
+        latitude: Latitude (-90 to 90)
     """
     logger.info(
-        f"Iniciando download - Fonte: {data_source}, "
-        f"Período: {data_inicial} a {data_final}, "
+        f"Starting download - Source: {data_source}, "
+        f"Period: {data_inicial} to {data_final}, "
         f"Coord: ({latitude}, {longitude})"
     )
     warnings_list = []
 
-    # ✅ 1. VALIDAÇÃO DE COORDENADAS
+    # 1. COORDINATE VALIDATION
     coord_valid, coord_details = ClimateValidationService.validate_coordinates(
         lat=latitude, lon=longitude, location_name="Download Request"
     )
     if not coord_valid:
-        msg = f"Coordenadas inválidas: {coord_details.get('errors')}"
+        msg = f"Invalid coordinates: {coord_details.get('errors')}"
         logger.error(msg)
         raise ValueError(msg)
 
-    # ✅ 2. VALIDAÇÃO DE FORMATO DE DATAS
+    # 2. DATE FORMAT VALIDATION
     date_valid, date_details = ClimateValidationService.validate_date_range(
         start_date=data_inicial,
         end_date=data_final,
-        allow_future=True,  # Permite forecast
+        allow_future=True,  # Allow forecast
     )
     if not date_valid:
-        msg = f"Datas inválidas: {date_details.get('errors')}"
+        msg = f"Invalid dates: {date_details.get('errors')}"
         logger.error(msg)
         raise ValueError(msg)
 
-    # Converter para pandas datetime para cálculos
+    # Convert to pandas datetime for calculations
     data_inicial_formatted = pd.to_datetime(data_inicial)
     data_final_formatted = pd.to_datetime(data_final)
     period_days = date_details["period_days"]
 
-    # ✅ 3. DETECÇÃO DE MODO (usando módulo oficial)
+    # 3. MODE DETECTION (using official module)
     detected_mode, error = ClimateValidationService.detect_mode_from_dates(
         data_inicial, data_final
     )
     if not detected_mode:
-        warnings_list.append(f"Modo não detectado: {error}")
-        # Usar modo padrão baseado nas datas
+        warnings_list.append(f"Mode not detected: {error}")
+        # Use default mode based on dates
         today = datetime.now().date()
         end_date_obj = pd.to_datetime(data_final).date()
         if end_date_obj > today:
@@ -102,32 +99,32 @@ async def download_weather_data(
         else:
             detected_mode = "dashboard_current"
         logger.warning(
-            f"Usando modo padrão: {detected_mode} (datas não se encaixam "
-            f"perfeitamente nos modos)"
+            f"Using default mode: {detected_mode} (dates don't fit "
+            f"perfectly into modes)"
         )
 
-    # ✅ 4. VALIDAÇÃO DE MODO E PERÍODO
+    # 4. MODE AND PERIOD VALIDATION
     mode_valid, mode_details = ClimateValidationService.validate_request_mode(
         mode=detected_mode,
         start_date=data_inicial,
         end_date=data_final,
     )
     if not mode_valid:
-        # Adicionar warnings mas não falhar (pode ser requisição manual)
+        # Add warnings but don't fail (may be manual request)
         mode_errors = mode_details.get("errors", [])
         warnings_list.extend(
-            [f"Aviso de modo {detected_mode}: {err}" for err in mode_errors]
+            [f"Mode {detected_mode} warning: {err}" for err in mode_errors]
         )
         logger.warning(
-            f"Validação de modo {detected_mode} com warnings: {mode_errors}"
+            f"Mode {detected_mode} validation with warnings: {mode_errors}"
         )
 
-    logger.info(f"Modo detectado: {detected_mode}")
+    logger.info(f"Detected mode: {detected_mode}")
 
-    # ✅ 5. SELEÇÃO INTELIGENTE DE FONTES (usando ClimateSourceManager)
+    # 5. INTELLIGENT SOURCE SELECTION (using ClimateSourceManager)
     source_manager = ClimateSourceManager()
 
-    # Normalizar entrada de data_source
+    # Normalize data_source input
     if isinstance(data_source, list):
         requested_sources = [str(s).lower() for s in data_source]
     else:
@@ -137,9 +134,9 @@ async def download_weather_data(
         else:
             requested_sources = [data_source_str]
 
-    # Usar método específico para data_download
+    # Use specific method for data_download
     if "data fusion" in requested_sources:
-        # Data Fusion: usar seleção automática baseada em modo e localização
+        # Data Fusion: use automatic selection based on mode and location
         try:
             source_result = source_manager.get_sources_for_data_download(
                 lat=latitude,
@@ -147,21 +144,21 @@ async def download_weather_data(
                 start_date=pd.to_datetime(data_inicial).date(),
                 end_date=pd.to_datetime(data_final).date(),
                 mode=detected_mode,
-                preferred_sources=None,  # Usar todas disponíveis
+                preferred_sources=None,  # Use all available
             )
             sources = source_result["sources"]
             warnings_list.extend(source_result["warnings"])
 
             logger.info(
-                f"Data Fusion {detected_mode}: {len(sources)} fontes "
-                f"selecionadas - {sources}"
+                f"Data Fusion {detected_mode}: {len(sources)} sources "
+                f"selected - {sources}"
             )
         except ValueError as e:
-            msg = f"Erro na seleção de fontes para Data Fusion: {str(e)}"
+            msg = f"Error selecting sources for Data Fusion: {str(e)}"
             logger.error(msg)
             raise ValueError(msg)
     else:
-        # Fonte(s) específica(s): validar disponibilidade
+        # Specific source(s): validate availability
         try:
             source_result = source_manager.get_sources_for_data_download(
                 lat=latitude,
@@ -174,72 +171,71 @@ async def download_weather_data(
             sources = source_result["sources"]
             warnings_list.extend(source_result["warnings"])
 
-            # Validar que todas as fontes solicitadas estão disponíveis
+            # Validate that all requested sources are available
             unavailable = set(requested_sources) - set(sources)
             if unavailable:
                 msg = (
-                    f"Fontes indisponíveis para ({latitude}, {longitude}): "
+                    f"Sources unavailable for ({latitude}, {longitude}): "
                     f"{unavailable}"
                 )
                 logger.error(msg)
                 raise ValueError(msg)
 
-            logger.info(f"Fontes específicas selecionadas: {sources}")
+            logger.info(f"Specific sources selected: {sources}")
         except ValueError as e:
-            msg = f"Erro na validação de fontes: {str(e)}"
+            msg = f"Error validating sources: {str(e)}"
             logger.error(msg)
             raise ValueError(msg)
 
     if not sources:
-        msg = "Nenhuma fonte disponível para esta requisição"
+        msg = "No sources available for this request"
         logger.error(msg)
         raise ValueError(msg)
 
     weather_data_sources: List[pd.DataFrame] = []
     for source in sources:
-        logger.info(f"📥 Processando fonte: {source}")
+        logger.info(f"Processing source: {source}")
 
-        # ✅ Validações de limites temporais delegadas aos clientes
-        # Cada cliente (adapter) valida seus próprios limites internamente
-        # NÃO há necessidade de validar aqui (duplicação removida)
-        # Limites canônicos em: climate_source_availability.py
+        # Temporal limit validations
+        # Each client (adapter) validates its own internal limits
+        # NO need to validate here (duplication removed)
+        # Canonical limits in: climate_source_availability.py
         data_final_adjusted = data_final_formatted
 
-        # 🔄 Download data
-        # NOTA: Validações de limites temporais são feitas pelos
-        # próprios clientes/adapters. Cada API conhece seus limites
-        # e valida internamente.
-        # Inicializa variáveis
+        # Download data
+        # NOTE: Temporal limit validations are done by
+        # clients/adapters themselves. Each API knows its limits
+        # and validates internally.
+        # Initialize variables
         weather_df = None
 
         try:
             if source == "nasa_power":
-                # Usar factory para garantir cache Redis injetado
-                client = ClimateClientFactory.create_nasa_power()
-                try:
-                    nasa_data = await client.get_daily_data(
-                        lat=latitude,
-                        lon=longitude,
-                        start_date=data_inicial_formatted,
-                        end_date=data_final_adjusted,
-                    )
-                finally:
-                    await client.close()
+                from scripts.api.services.nasa_power.nasa_power_sync_adapter import (
+                    NASAPowerSyncAdapter,
+                )
 
-                # Converte para DataFrame pandas - variáveis NASA POWER
+                client = NASAPowerSyncAdapter()
+                nasa_data = client.get_daily_data_sync(
+                    lat=latitude,
+                    lon=longitude,
+                    start_date=data_inicial_formatted,
+                    end_date=data_final_adjusted,
+                )
+
+                # Convert to pandas DataFrame - NASA POWER variables
                 data_records = []
                 for record in nasa_data:
                     data_records.append(
                         {
                             "date": record.date,
-                            # Variáveis NASA POWER nativas
-                            "T2M_MAX": record.temp_max,
-                            "T2M_MIN": record.temp_min,
-                            "T2M": record.temp_mean,
-                            "RH2M": record.humidity,
-                            "WS2M": record.wind_speed,
-                            "ALLSKY_SFC_SW_DWN": record.solar_radiation,
-                            "PRECTOTCORR": record.precipitation,
+                            "T2M_MAX": record.T2M_MAX,
+                            "T2M_MIN": record.T2M_MIN,
+                            "T2M": record.T2M,
+                            "RH2M": record.RH2M,
+                            "WS2M": record.WS2M,
+                            "ALLSKY_SFC_SW_DWN": record.ALLSKY_SFC_SW_DWN,
+                            "PRECTOTCORR": record.PRECTOTCORR,
                         }
                     )
 
@@ -248,13 +244,13 @@ async def download_weather_data(
                 weather_df.set_index("date", inplace=True)
 
                 logger.info(
-                    f"✅ NASA POWER: {len(nasa_data)} registros diários "
-                    f"para ({latitude}, {longitude})"
+                    f"NASA POWER: {len(nasa_data)} daily records "
+                    f"for ({latitude}, {longitude})"
                 )
 
             elif source == "openmeteo_archive":
-                # Open-Meteo Archive (histórico desde 1950)
-                from validation_logic_eto.api.services.openmeteo_archive.openmeteo_archive_sync_adapter import (
+                # Open-Meteo Archive (historical since 1950)
+                from scripts.api.services.openmeteo_archive.openmeteo_archive_sync_adapter import (
                     OpenMeteoArchiveSyncAdapter,
                 )
 
@@ -268,173 +264,170 @@ async def download_weather_data(
 
                 if not openmeteo_data:
                     msg = (
-                        f"Open-Meteo Archive: Nenhum dado "
-                        f"para ({latitude}, {longitude})"
+                        f"No data from Open-Meteo Archive for "
+                        f"({latitude}, {longitude}) "
+                        f"between {data_inicial} and {data_final}"
                     )
                     logger.warning(msg)
                     warnings_list.append(msg)
                     continue
 
-                # Converte para DataFrame - TODAS as variáveis Open-Meteo
+                # Convert to DataFrame - ALL Open-Meteo variables
                 weather_df = pd.DataFrame(openmeteo_data)
                 weather_df["date"] = pd.to_datetime(weather_df["date"])
                 weather_df.set_index("date", inplace=True)
 
-                # Harmonizar variáveis OpenMeteo → NASA format para ETo
-                # ETo: T2M_MAX, T2M_MIN, T2M (mean), RH2M, WS2M,
-                #      ALLSKY_SFC_SW_DWN, PRECTOTCORR
-                harmonization = {
-                    "temperature_2m_max": "T2M_MAX",
-                    "temperature_2m_min": "T2M_MIN",
-                    "temperature_2m_mean": "T2M",  # NASA usa T2M para média
-                    "relative_humidity_2m_mean": "RH2M",
-                    "wind_speed_2m_mean": "WS2M",
-                    "shortwave_radiation_sum": "ALLSKY_SFC_SW_DWN",
-                    "precipitation_sum": "PRECTOTCORR",
-                }
-
-                for openmeteo_var, nasa_var in harmonization.items():
-                    if openmeteo_var in weather_df.columns:
-                        weather_df[nasa_var] = weather_df[openmeteo_var]
-
-                logger.info(
-                    f"✅ Open-Meteo Archive: {len(openmeteo_data)} "
-                    f"registros diários para ({latitude}, {longitude})"
-                )
-
-            elif source == "openmeteo_forecast":
-                # Open-Meteo Forecast (previsão + recent: -30d a +5d)
-                client = ClimateClientFactory.create_openmeteo_forecast()
-                try:
-                    forecast_data = await client.get_daily_data(
-                        lat=latitude,
-                        lon=longitude,
-                        start_date=data_inicial_formatted,
-                        end_date=data_final_formatted,
-                    )
-                finally:
-                    await client.close()
-
-                if not forecast_data:
-                    msg = (
-                        f"Open-Meteo Forecast: Nenhum dado "
-                        f"para ({latitude}, {longitude})"
-                    )
-                    logger.warning(msg)
-                    warnings_list.append(msg)
-                    continue
-
-                # Converte para DataFrame - TODAS as variáveis Open-Meteo
-                weather_df = pd.DataFrame(forecast_data)
-                weather_df["date"] = pd.to_datetime(weather_df["date"])
-                weather_df.set_index("date", inplace=True)
-
-                # Harmonizar variáveis OpenMeteo → NASA format para ETo
+                # Harmonize OpenMeteo -> NASA format for ETo
                 # ETo: T2M_MAX, T2M_MIN, T2M (mean), RH2M, WS2M,
                 # ALLSKY_SFC_SW_DWN, PRECTOTCORR
                 harmonization = {
                     "temperature_2m_max": "T2M_MAX",
                     "temperature_2m_min": "T2M_MIN",
-                    "temperature_2m_mean": "T2M",  # NASA usa T2M para média
+                    "temperature_2m_mean": "T2M",
                     "relative_humidity_2m_mean": "RH2M",
                     "wind_speed_2m_mean": "WS2M",
                     "shortwave_radiation_sum": "ALLSKY_SFC_SW_DWN",
                     "precipitation_sum": "PRECTOTCORR",
                 }
 
-                # Renomear colunas existentes
                 for openmeteo_var, nasa_var in harmonization.items():
                     if openmeteo_var in weather_df.columns:
                         weather_df[nasa_var] = weather_df[openmeteo_var]
-                        logger.debug(
-                            f"Harmonized: {openmeteo_var} → {nasa_var}"
-                        )
 
                 logger.info(
-                    f"✅ Open-Meteo Forecast: {len(forecast_data)} "
-                    f"registros diários para ({latitude}, {longitude})"
+                    f"Open-Meteo Archive: {len(openmeteo_data)} "
+                    f"daily records for ({latitude}, {longitude})"
                 )
 
-            elif source == "met_norway":
-                # MET Norway Locationforecast (Global, async)
-                client = ClimateClientFactory.create_met_norway()
-                try:
-                    met_data = await client.get_daily_forecast(
-                        lat=latitude,
-                        lon=longitude,
-                        start_date=data_inicial_formatted,
-                        end_date=data_final_adjusted,
-                    )
-                finally:
-                    await client.close()
+            elif source == "openmeteo_forecast":
+                # Open-Meteo Forecast (forecast + recent: -29d to +5d)
+                from scripts.api.services.openmeteo_forecast.openmeteo_forecast_sync_adapter import (
+                    OpenMeteoForecastSyncAdapter,
+                )
 
-                if not met_data:
+                client = OpenMeteoForecastSyncAdapter()
+                forecast_data = client.get_daily_data_sync(
+                    lat=latitude,
+                    lon=longitude,
+                    start_date=data_inicial_formatted,
+                    end_date=data_final_formatted,
+                )
+
+                if not forecast_data:
                     msg = (
-                        f"MET Norway: Nenhum dado "
-                        f"para ({latitude}, {longitude})"
+                        f"No data from Open-Meteo Forecast for "
+                        f"({latitude}, {longitude}) "
+                        f"between {data_inicial} and {data_final}"
                     )
                     logger.warning(msg)
                     warnings_list.append(msg)
                     continue
 
-                # Obter variáveis recomendadas para a região
-                from validation_logic_eto.api.services import METNorwayClient
+                # Convert to DataFrame - ALL Open-Meteo variables
+                weather_df = pd.DataFrame(forecast_data)
+                weather_df["date"] = pd.to_datetime(weather_df["date"])
+                weather_df.set_index("date", inplace=True)
+
+                # Harmonize OpenMeteo -> NASA format for ETo
+                # ETo: T2M_MAX, T2M_MIN, T2M (mean), RH2M, WS2M,
+                # ALLSKY_SFC_SW_DWN, PRECTOTCORR
+                harmonization = {
+                    "temperature_2m_max": "T2M_MAX",
+                    "temperature_2m_min": "T2M_MIN",
+                    "temperature_2m_mean": "T2M",
+                    "relative_humidity_2m_mean": "RH2M",
+                    "wind_speed_2m_mean": "WS2M",
+                    "shortwave_radiation_sum": "ALLSKY_SFC_SW_DWN",
+                    "precipitation_sum": "PRECTOTCORR",
+                }
+
+                # Rename existing columns
+                for openmeteo_var, nasa_var in harmonization.items():
+                    if openmeteo_var in weather_df.columns:
+                        weather_df[nasa_var] = weather_df[openmeteo_var]
+
+                logger.info(
+                    f"Open-Meteo Forecast: {len(forecast_data)} "
+                    f"daily records for ({latitude}, {longitude})"
+                )
+
+            elif source == "met_norway":
+                # MET Norway Locationforecast (Global, async)
+                from scripts.api.services.met_norway.met_norway_client import (
+                    METNorwayClient,
+                )
+
+                client = METNorwayClient()
+                met_data = await client.get_daily_forecast(
+                    lat=latitude,
+                    lon=longitude,
+                    start_date=data_inicial_formatted,
+                    end_date=data_final_adjusted,
+                )
+
+                if not met_data:
+                    msg = (
+                        f"No data from MET Norway for "
+                        f"({latitude}, {longitude}) "
+                        f"between {data_inicial} and {data_final}"
+                    )
+                    logger.warning(msg)
+                    warnings_list.append(msg)
+                    continue
+
+                # Get recommended variables for region
+                from scripts.api.services.met_norway.met_norway_client import (
+                    METNorwayClient,
+                )
 
                 recommended_vars = METNorwayClient.get_recommended_variables(
                     latitude, longitude
                 )
 
-                # Verificar se precipitação deve ser incluída
+                # Check if precipitation should be included
                 include_precipitation = "precipitation_sum" in recommended_vars
 
-                # Log da estratégia regional
+                # Log regional strategy
                 if include_precipitation:
                     region_info = (
-                        "NORDIC (1km + radar): "
-                        "Incluindo precipitação (alta qualidade)"
+                        "Nordic Region: using high-quality "
+                        "precipitation (1km + radar)"
                     )
                 else:
                     region_info = (
-                        "GLOBAL (9km ECMWF): "
-                        "Excluindo precipitação (usar Open-Meteo)"
+                        "Global: using temperature/humidity only "
+                        "(precipitation from Open-Meteo)"
                     )
 
                 logger.info(f"MET Norway - {region_info}")
 
-                # Converte para DataFrame - FILTRA variáveis por região
+                # Convert to DataFrame - FILTER variables by region
                 data_records = []
                 for record in met_data:
-                    record_dict = {
+                    row = {
                         "date": record.date,
-                        # Temperaturas (sempre incluídas)
-                        "temperature_2m_max": record.temp_max,
-                        "temperature_2m_min": record.temp_min,
-                        "temperature_2m_mean": record.temp_mean,
-                        # Umidade (sempre incluída)
-                        "relative_humidity_2m_mean": (record.humidity_mean),
+                        "temp_max": record.temp_max,
+                        "temp_min": record.temp_min,
+                        "temp_mean": record.temp_mean,
+                        "humidity_mean": record.humidity_mean,
                     }
-
-                    # Precipitação: apenas para região Nordic
+                    # Add precipitation only if recommended
                     if include_precipitation:
-                        record_dict["precipitation_sum"] = (
-                            record.precipitation_sum
-                        )
-                    # Else: omitir precipitação (será None ou ignorada)
-
-                    data_records.append(record_dict)
+                        row["precipitation_sum"] = record.precipitation_sum
+                    data_records.append(row)
 
                 weather_df = pd.DataFrame(data_records)
                 weather_df["date"] = pd.to_datetime(weather_df["date"])
                 weather_df.set_index("date", inplace=True)
 
-                # Adicionar atribuição CC-BY 4.0 aos warnings
+                # Add CC-BY 4.0 attribution to warnings
                 warnings_list.append(
-                    "📌 Dados MET Norway: CC-BY 4.0 - Atribuição requerida"  # noqa: E501
+                    "MET Norway data: CC-BY 4.0 - Attribution required"
                 )
 
-                # Log de variáveis incluídas
+                # Log included variables
                 logger.info(
-                    "MET Norway: %d registros (%s, %s), " "variáveis: %s",
+                    "MET Norway: %d records (%s, %s), " "variables: %s",
                     len(met_data),
                     latitude,
                     longitude,
@@ -442,45 +435,40 @@ async def download_weather_data(
                 )
 
             elif source == "nws_forecast":
-                # NWS Forecast (USA, previsões)
-                client = ClimateClientFactory.create_nws()
-                try:
-                    nws_forecast_data = await client.get_daily_forecast(
-                        lat=latitude,
-                        lon=longitude,
-                        start_date=data_inicial_formatted,
-                        end_date=data_final_adjusted,
-                    )
-                finally:
-                    await client.close()
+                # NWS Forecast (USA, forecasts)
+                from scripts.api.services.nws_forecast.nws_forecast_sync_adapter import (
+                    NWSDailyForecastSyncAdapter,
+                )
+
+                client = NWSDailyForecastSyncAdapter()
+                nws_forecast_data = client.get_daily_data_sync(
+                    lat=latitude,
+                    lon=longitude,
+                    start_date=data_inicial_formatted,
+                    end_date=data_final_adjusted,
+                )
 
                 if not nws_forecast_data:
                     msg = (
-                        f"NWS Forecast: Nenhum dado para "
-                        f"({latitude}, {longitude})"
+                        f"No data from NWS Forecast for "
+                        f"({latitude}, {longitude}) "
+                        f"between {data_inicial} and {data_final}"
                     )
                     logger.warning(msg)
                     warnings_list.append(msg)
                     continue
 
-                # Converte para DataFrame - variáveis NWS Forecast
+                # Convert to DataFrame - NWS Forecast variables
                 data_records = []
                 for record in nws_forecast_data:
                     data_records.append(
                         {
                             "date": record.date,
-                            # Temperaturas
-                            "temperature_2m_max": record.temp_max,
-                            "temperature_2m_min": record.temp_min,
-                            "temperature_2m_mean": record.temp_mean,
-                            # Umidade
-                            "relative_humidity_2m_mean": (
-                                record.humidity_mean
-                            ),
-                            # Vento
-                            "wind_speed_10m_max": record.wind_speed_max,
-                            "wind_speed_10m_mean": record.wind_speed_mean,
-                            # Precipitação
+                            "temp_max": record.temp_max,
+                            "temp_min": record.temp_min,
+                            "temp_mean": record.temp_mean,
+                            "humidity_mean": record.humidity_mean,
+                            "wind_speed_2m_mean": record.wind_speed_2m_mean,
                             "precipitation_sum": record.precipitation_sum,
                         }
                     )
@@ -490,172 +478,123 @@ async def download_weather_data(
                 weather_df.set_index("date", inplace=True)
 
                 logger.info(
-                    "NWS Forecast: %d registros (%s, %s)",
+                    "NWS Forecast: %d records (%s, %s)",
                     len(nws_forecast_data),
                     latitude,
                     longitude,
                 )
 
             elif source == "nws_stations":
-                # NWS Stations (USA, estações)
-                client = ClimateClientFactory.create_nws_stations()
-                try:
-                    nws_data = await client.get_daily_data(
-                        lat=latitude,
-                        lon=longitude,
-                        start_date=data_inicial_formatted,
-                        end_date=data_final_adjusted,
-                    )
-                finally:
-                    await client.close()
-
-                if not nws_data:
-                    msg = (
-                        f"NWS Stations: Nenhum dado para "
-                        f"({latitude}, {longitude})"
-                    )
-                    logger.warning(msg)
-                    warnings_list.append(msg)
-                    continue
-
-                # Converte para DataFrame - variáveis disponíveis do NWS
-                data_records = []
-                for record in nws_data:
-                    data_records.append(
-                        {
-                            "date": record.date,
-                            # Temperaturas
-                            "temp_celsius": record.temp_mean,
-                            # Umidade
-                            "humidity_percent": record.humidity,
-                            # Vento
-                            "wind_speed_ms": record.wind_speed,
-                            # Precipitação
-                            "precipitation_mm": record.precipitation,
-                        }
-                    )
-
-                weather_df = pd.DataFrame(data_records)
-                weather_df["date"] = pd.to_datetime(weather_df["date"])
-                weather_df.set_index("date", inplace=True)
-
-                logger.info(
-                    "NWS Stations: %d registros (%s, %s)",
-                    len(nws_data),
-                    latitude,
-                    longitude,
+                from scripts.api.services.nws_stations.nws_stations_sync_adapter import (
+                    NWSStationsSyncAdapter,
                 )
+
+                client = NWSStationsSyncAdapter()
+                # NWS Stations implementation would go here
+
 
         except Exception as e:
             logger.error(
-                f"{source}: erro ao baixar dados: {str(e)}",
-                exc_info=True,  # Mostra traceback completo
+                f"{source}: error downloading data: {str(e)}",
+                exc_info=True,
             )
-            warnings_list.append(f"{source}: erro ao baixar dados: {str(e)}")
+            warnings_list.append(f"{source}: error downloading data: {str(e)}")
             continue
 
-        # Valida DataFrame
+        # Validate DataFrame
         if weather_df is None or weather_df.empty:
             msg = (
-                f"Nenhum dado obtido de {source} para "
+                f"No data obtained from {source} for "
                 f"({latitude}, {longitude}) "
-                f"entre {data_inicial} e {data_final}"
+                f"between {data_inicial} and {data_final}"
             )
             logger.warning(msg)
             warnings_list.append(msg)
             continue
 
-        # Não padronizar colunas - preservar nomes nativos das APIs
-        # Cada API retorna suas próprias variáveis específicas
-        # Validação será feita em data_preprocessing.py com limits apropriados
+        # Don't standardize columns - preserve native API names
+        # Each API returns its own specific variables
+        # Validation will be done in data_preprocessing.py with appropriate limits
         weather_df = weather_df.replace(-999.00, np.nan)
         weather_df = weather_df.dropna(how="all", subset=weather_df.columns)
 
-        # Verifica quantidade de dados
-        dias_retornados = (
+        # Check data quantity
+        days_returned = (
             weather_df.index.max() - weather_df.index.min()
         ).days + 1
-        if dias_retornados < period_days:
+        if days_returned < period_days:
             msg = (
-                f"{source}: obtidos {dias_retornados} dias "
-                f"(solicitados: {period_days})"
+                f"{source}: obtained {days_returned} days "
+                f"(requested: {period_days})"
             )
             warnings_list.append(msg)
 
-        # Verifica dados faltantes
-        perc_faltantes = weather_df.isna().mean() * 100
-        nomes_variaveis = {
+        # Check missing data
+        perc_missing = weather_df.isna().mean() * 100
+        variable_names = {
             # NASA POWER
-            "ALLSKY_SFC_SW_DWN": "Radiação Solar (MJ/m²/dia)",
-            "PRECTOTCORR": "Precipitação Total (mm)",
-            "T2M_MAX": "Temperatura Máxima (°C)",
-            "T2M_MIN": "Temperatura Mínima (°C)",
-            "T2M": "Temperatura Média (°C)",
-            "RH2M": "Umidade Relativa (%)",
-            "WS2M": "Velocidade do Vento (m/s)",
+            "ALLSKY_SFC_SW_DWN": "Solar Radiation (MJ/m²/day)",
+            "PRECTOTCORR": "Total Precipitation (mm)",
+            "T2M_MAX": "Maximum Temperature (°C)",
+            "T2M_MIN": "Minimum Temperature (°C)",
+            "T2M": "Mean Temperature (°C)",
+            "RH2M": "Relative Humidity (%)",
+            "WS2M": "Wind Speed (m/s)",
             # Open-Meteo (Archive & Forecast)
-            "temperature_2m_max": "Temperatura Máxima (°C)",
-            "temperature_2m_min": "Temperatura Mínima (°C)",
-            "temperature_2m_mean": "Temperatura Média (°C)",
-            "relative_humidity_2m_max": "Umidade Relativa Máxima (%)",
-            "relative_humidity_2m_min": "Umidade Relativa Mínima (%)",
-            "relative_humidity_2m_mean": "Umidade Relativa Média (%)",
-            "wind_speed_10m_mean": "Velocidade Média do Vento (m/s)",
-            "wind_speed_10m_max": "Velocidade Máxima do Vento (m/s)",
-            "shortwave_radiation_sum": "Radiação Solar (MJ/m²/dia)",
-            "precipitation_sum": "Precipitação Total (mm)",
-            "et0_fao_evapotranspiration": "ETo FAO-56 (mm/dia)",
+            "temperature_2m_max": "Maximum Temperature (°C)",
+            "temperature_2m_min": "Minimum Temperature (°C)",
+            "temperature_2m_mean": "Mean Temperature (°C)",
+            "relative_humidity_2m_max": "Maximum Relative Humidity (%)",
+            "relative_humidity_2m_min": "Minimum Relative Humidity (%)",
+            "relative_humidity_2m_mean": "Mean Relative Humidity (%)",
+            "wind_speed_10m_mean": "Mean Wind Speed (m/s)",
+            "wind_speed_10m_max": "Maximum Wind Speed (m/s)",
+            "shortwave_radiation_sum": "Solar Radiation (MJ/m²/day)",
+            "precipitation_sum": "Total Precipitation (mm)",
+            "et0_fao_evapotranspiration": "ETo FAO-56 (mm/day)",
             # MET Norway
-            # (mesmas variáveis do Open-Meteo, pois são harmonizadas)
-            # As variáveis já estão listadas acima na seção Open-Meteo
-            # NWS Stations
-            "temp_celsius": "Temperatura (°C)",
-            "humidity_percent": "Umidade Relativa (%)",
-            "wind_speed_ms": "Velocidade do Vento (m/s)",
-            "precipitation_mm": "Precipitação (mm)",
+            # (same variables as Open-Meteo, as they are harmonized)
+            # Variables already listed above in Open-Meteo section
+            # NWS Stations - Station observations (no precipitation)
         }
 
-        for nome_var, porcentagem in perc_faltantes.items():
-            if porcentagem > 25:
-                var_portugues = nomes_variaveis.get(
-                    str(nome_var), str(nome_var)
+        for var_name, percentage in perc_missing.items():
+            if percentage > 25:
+                var_display = variable_names.get(var_name, var_name)
+                warnings_list.append(
+                    f"{source}: {var_display} has {percentage:.1f}% missing data"
                 )
-                msg = (
-                    f"{source}: {porcentagem:.1f}% faltantes em "
-                    f"{var_portugues}. Será feita imputação."
-                )
-                warnings_list.append(msg)
 
         weather_data_sources.append(weather_df)
-        logger.debug("%s: DataFrame obtido\n%s", source, weather_df)
+        logger.debug("%s: DataFrame obtained\n%s", source, weather_df)
 
-    # Consolidar dados (fusão Kalman será feita em eto_services.py)
+    # Consolidate data (Kalman fusion will be done in eto_services.py)
     if not weather_data_sources:
-        msg = "Nenhuma fonte forneceu dados válidos"
+        msg = "No sources provided valid data"
         logger.error(msg)
         raise ValueError(msg)
 
-    # Se múltiplas fontes, concatenar TODAS as medições
-    # A fusão Kalman em eto_services.py aplicará pesos inteligentes
+    # If multiple sources, concatenate ALL measurements
+    # Kalman fusion in eto_services.py will apply intelligent weights
     if len(weather_data_sources) > 1:
         logger.info(
-            f"Concatenando {len(weather_data_sources)} fontes "
-            f"(fusão Kalman será aplicada em eto_services.py)"
+            f"Concatenating {len(weather_data_sources)} sources "
+            f"(Kalman fusion will be applied in eto_services.py)"
         )
         weather_data = pd.concat(weather_data_sources, axis=0)
-        # MANTER duplicatas de datas - cada linha representa 1 fonte
-        # Fusão Kalman processará todas as medições
+        # KEEP date duplicates - each row represents 1 source
+        # Kalman fusion will process all measurements
         logger.info(
-            f"Total de {len(weather_data)} medições de "
-            f"{len(weather_data_sources)} fontes para fusão"
+            f"Total of {len(weather_data)} measurements from "
+            f"{len(weather_data_sources)} sources for fusion"
         )
     else:
         weather_data = weather_data_sources[0]
 
-    # Validação final - aceitar todas as variáveis das APIs
-    # Não mais restringir apenas às variáveis NASA POWER
-    # Validação física será feita em data_preprocessing.py
+    # Final validation - accept all API variables
+    # No longer restrict to only NASA POWER variables
+    # Physical validation will be done in data_preprocessing.py
 
-    logger.info("Dados finais obtidos com sucesso")
-    logger.debug("DataFrame final:\n%s", weather_data)
+    logger.info("Final data obtained successfully")
+    logger.debug("Final DataFrame:\n%s", weather_data)
     return weather_data, warnings_list

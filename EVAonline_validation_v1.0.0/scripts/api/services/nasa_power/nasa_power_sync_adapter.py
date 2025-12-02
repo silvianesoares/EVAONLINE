@@ -55,12 +55,12 @@ class NASAPowerSyncAdapter:
             List of daily data
 
         Example:
-            >>> adapter = NASAPowerSyncAdapter()
-            >>> data = adapter.get_daily_data_sync(
-            ...     lat=-15.7939, lon=-47.8828,
-            ...     start_date=datetime(2024, 1, 1),
-            ...     end_date=datetime(2024, 1, 7)
-            ... )
+            > adapter = NASAPowerSyncAdapter()
+            > data = adapter.get_daily_data_sync(
+                lat=-15.7939, lon=-47.8828,
+                start_date=datetime(2024, 1, 1),
+                end_date=datetime(2024, 1, 7)
+            )
         """
         return asyncio.run(
             self._async_get_daily_data(
@@ -141,7 +141,7 @@ class NASAPowerSyncAdapter:
             "api": "NASA POWER",
             "url": "https://power.larc.nasa.gov/",
             "coverage": "Global",
-            "period": "1981-present (daily delay: 2-7 days)",
+            "period": "1990-present (daily delay: 2-7 days)",
             "resolution": "Daily (0.5° x 0.625° grid)",
             "range_limits": "7-30 days per request",
             "community": "AG (Agronomy) - UPPERCASE required",

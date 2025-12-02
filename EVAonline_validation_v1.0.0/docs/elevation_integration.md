@@ -37,8 +37,6 @@ Aumenta ~10% por 1000m devido a menor absorção atmosférica:
 Rs_ajustado = Rs × (1 + 0.0001 × z)
 ```
 
-**Impacto**: +11.7% em locais a 1172m (ex: Brasília)
-
 ## Fontes de Dados de Elevação
 
 ### Estratégia de Priorização
@@ -59,28 +57,6 @@ O EVAonline utiliza uma estratégia de múltiplas fontes com fallback:
 | **Open-Meteo** | Variável | Global | ±7-30m | Backup geral |
 
 ## Impacto da Elevação no Cálculo de ETo
-
-### Exemplo: Brasília (1172m)
-
-| Variável | Nível do Mar | 1172m | Diferença |
-|----------|--------------|-------|-----------|
-| **Pressão (P)** | 101.3 kPa | 87.8 kPa | -13.3% |
-| **Gamma (γ)** | 0.0673 kPa/°C | 0.0584 kPa/°C | -13.2% |
-| **Radiação Solar** | 20.0 MJ/m² | 22.3 MJ/m² | +11.7% |
-| **ETo Estimado** | 4.5 mm/dia | 5.1 mm/dia | **+13.3%** |
-
-⚠️ **Conclusão**: Ignorar elevação pode subestimar ETo em >10% em regiões altas!
-
-### Exemplo: Piracicaba, SP (540m)
-
-| Variável | Nível do Mar | 540m | Diferença |
-|----------|--------------|------|-----------|
-| **Pressão (P)** | 101.3 kPa | 94.9 kPa | -6.3% |
-| **Gamma (γ)** | 0.0673 kPa/°C | 0.0631 kPa/°C | -6.2% |
-| **Radiação Solar** | 20.0 MJ/m² | 21.1 MJ/m² | +5.4% |
-| **ETo Estimado** | 4.5 mm/dia | 4.8 mm/dia | **+6.7%** |
-
-## Uso Prático: Exemplos de Código
 
 ### 1. Calcular Fatores de Correção
 
@@ -245,10 +221,10 @@ location = await client.get_elevation(70, 25)  # Noruega
 
 1. **Usar Batch para Múltiplos Pontos**
    ```python
-   # ✅ Eficiente: 1 request para 100 pontos
+   # Eficiente: 1 request para 100 pontos
    results = await client.get_elevations_batch(locations)
    
-   # ❌ Ineficiente: 100 requests individuais
+   # Ineficiente: 100 requests individuais
    for lat, lon in locations:
        result = await client.get_elevation(lat, lon)
    ```
@@ -287,19 +263,19 @@ location = await client.get_elevation(70, 25)  # Noruega
 ## Recomendações de Uso
 
 ### Para Cálculo de ETo
-✅ **Sempre usar OpenTopoData** para:
+**Sempre usar OpenTopoData** para:
 - Regiões montanhosas
 - Planaltos (ex: Cerrado brasileiro)
 - Áreas acima de 500m
 - Validação de artigos científicos
 
-✅ **Aceitável usar Open-Meteo** para:
+**Aceitável usar Open-Meteo** para:
 - Previsões de curto prazo (1-7 dias)
 - Dashboard em tempo real
 - Áreas abaixo de 500m
 - Tolerância de erro ~5%
 
-❌ **Nunca assumir 0m** (nível do mar) para:
+**Nunca assumir 0m** (nível do mar) para:
 - Cálculos históricos
 - Regiões interiores
 - Artigos científicos

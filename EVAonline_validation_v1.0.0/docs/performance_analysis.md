@@ -28,6 +28,11 @@ This document provides detailed analysis of EVAonline's performance compared to 
 
 **Source:** Script 7 comprehensive comparison (`7_compare_all_eto_sources.py`)
 
+**Data Location**: `data/7_comparison_all_sources/`
+- `SUMMARY_BY_SOURCE.csv` - Aggregate statistics by source
+- `COMPARISON_ALL_SOURCES.csv` - Per-city detailed comparisons
+- `plots/` - Individual city comparison visualizations (17 cities × 2 formats = 34 plots)
+
 ---
 
 ## Spatial Resolution Impact Analysis
@@ -37,9 +42,9 @@ This document provides detailed analysis of EVAonline's performance compared to 
 | Data Source | Spatial Resolution | Grid Cell Size | Match with Xavier (0.1°) | Performance Impact |
 |-------------|-------------------|----------------|-------------------------|-------------------|
 | **Xavier BR-DWGD** (Reference) | 0.1° × 0.1° | ~10 km × 10 km | Perfect (reference) | Baseline (R²=1.000, KGE=1.000) |
-| **ERA5-Land** (Open-Meteo) | 0.1° × 0.1° | ~10 km × 10 km | ✅ Exact match | Better spatial detail, but ERA5-Land model biases |
-| **MERRA-2** (NASA POWER) | 0.5° × 0.625° | ~55 km × 70 km | ⚠️ Coarser (5-6× larger cells) | Smoother fields, misses local variations |
-| **EVAonline Fusion** | Multi-resolution | Fuses 0.1° + 0.5° | ✅ Adapts to both | Best of both: detail + stability |
+| **ERA5-Land** (Open-Meteo) | 0.1° × 0.1° | ~10 km × 10 km |  Exact match | Better spatial detail, but ERA5-Land model biases |
+| **MERRA-2** (NASA POWER) | 0.5° × 0.625° | ~55 km × 70 km | Coarser (5-6× larger cells) | Smoother fields, misses local variations |
+| **EVAonline Fusion** | Multi-resolution | Fuses 0.1° + 0.5° |  Adapts to both | Best of both: detail + stability |
 
 ### Key Findings
 
@@ -76,30 +81,6 @@ Despite coarser resolution, NASA POWER achieves **higher R² (0.740)** than Open
 - **Multi-scale**: Combines MERRA-2 stability + ERA5-Land detail
 - **Result**: Achieves **best KGE (0.814)** and **lowest bias (0.71%)** despite mixing resolutions
 
-### Visual Comparison (Piracicaba-SP)
-
-```
-Grid Cell Size Comparison:
-┌─────────────────────────────────────────┐
-│   MERRA-2 (NASA POWER) - 0.5° × 0.625°  │
-│   ┌───────────────────────────────────┐ │
-│   │                                   │ │
-│   │         ~3,850 km² grid cell     │ │
-│   │  (averages large agricultural    │ │
-│   │   region around Piracicaba)      │ │
-│   │                                   │ │
-│   └───────────────────────────────────┘ │
-└─────────────────────────────────────────┘
-
-ERA5-Land / Xavier - 0.1° × 0.1°
-┌──┬──┬──┬──┬──┬──┐
-├──┼──┼──┼──┼──┼──┤
-├──┼──┼██┼──┼──┼──┤  ← ~100 km² grid cell
-├──┼──┼──┼──┼──┼──┤    (captures city-scale features)
-├──┼──┼──┼──┼──┼──┤
-└──┴──┴──┴──┴──┴──┘
-Each small cell ≈ 100 km² (6× MERRA-2 cells fit in 1 NASA cell)
-```
 
 ### Practical Implications
 
@@ -147,18 +128,18 @@ EVAOnline's **KGE = 0.814** demonstrates **very good performance**:
 For irrigation scheduling and water management:
 
 **Most important metrics**:
-1. **KGE** (0.814) - Overall performance ✅
-2. **PBIAS** (+0.71%) - Systematic accuracy ✅
-3. **MAE** (0.423 mm/day) - Absolute error ✅
+1. **KGE** (0.814) - Overall performance 
+2. **PBIAS** (+0.71%) - Systematic accuracy 
+3. **MAE** (0.423 mm/day) - Absolute error 
 
 **Less critical for operations**:
 - **R²** (correlation) - Useful but doesn't capture bias
 - **NSE** - Sensitive to outliers
 
 **Practical impact**: EVAonline's performance translates to:
-- ✅ Accurate irrigation scheduling (within 0.4 mm/day error)
-- ✅ Reliable crop water requirement estimation
-- ✅ Valid for hydrological modeling and water balance studies
+-  Accurate irrigation scheduling (within 0.4 mm/day error)
+-  Reliable crop water requirement estimation
+-  Valid for hydrological modeling and water balance studies
 
 ---
 
@@ -192,7 +173,7 @@ NASA POWER (MERRA-2)          Open-Meteo (ERA5-Land)
    • Combines best features
    • Adaptive weighting
    • Anchored to Brazilian reference
-   • Result: KGE=0.814, PBIAS=+0.71% ✅
+   • Result: KGE=0.814, PBIAS=+0.71% 
 ```
 
 ### 2. Bias Correction Impact
@@ -242,7 +223,7 @@ EVAonline uniquely provides **confidence intervals** through Kalman covariance:
 NASA POWER:      [-0.015 to 0.836]  → Range: 0.851 (high variability)
 Open-Meteo calc: [-0.613 to 0.813]  → Range: 1.426 (very high variability)
 Open-Meteo API:  [0.065 to 0.824]   → Range: 0.759 (high variability)
-EVAonline:       [0.721 to 0.885]   → Range: 0.164 (low variability) ✅
+EVAonline:       [0.721 to 0.885]   → Range: 0.164 (low variability) 
 ```
 
 **Interpretation**: EVAonline performs **consistently well** across all cities, while single sources show large performance drops in some locations.
@@ -251,10 +232,10 @@ EVAonline:       [0.721 to 0.885]   → Range: 0.164 (low variability) ✅
 
 | Scenario | Single Source Behavior | EVAonline Behavior |
 |----------|----------------------|-------------------|
-| **API temporarily unavailable** | ❌ No data | ✅ Falls back to available source |
-| **Extreme weather event** | ⚠️ Large uncertainty | ✅ Higher variance indicated, uses multiple sources |
-| **Data quality issue** | ❌ Propagates error | ✅ Kalman outlier detection, source re-weighting |
-| **Missing variables** | ❌ Cannot calculate ETo | ✅ Gap filling from alternative source |
+| **API temporarily unavailable** | No data |  Falls back to available source |
+| **Extreme weather event** | Large uncertainty |  Higher variance indicated, uses multiple sources |
+| **Data quality issue** | Propagates error |  Kalman outlier detection, source re-weighting |
+| **Missing variables** | Cannot calculate ETo |  Gap filling from alternative source |
 
 ---
 
@@ -262,13 +243,13 @@ EVAonline:       [0.721 to 0.885]   → Range: 0.164 (low variability) ✅
 
 **EVAonline's 98% improvement in KGE** vs NASA POWER comes from:
 
-✅ **Multi-source fusion** (complementary strengths)
-✅ **Adaptive weighting** (favors more reliable data)
-✅ **Brazil-specific bias correction** (Xavier climatology)
-✅ **Uncertainty quantification** (Kalman covariance)
-✅ **Temporal smoothing** (state evolution)
-✅ **Spatial multi-resolution** (0.1° + 0.5° combined)
-✅ **Operational robustness** (fallback mechanisms)
+ **Multi-source fusion** (complementary strengths)
+ **Adaptive weighting** (favors more reliable data)
+ **Brazil-specific bias correction** (Xavier climatology)
+ **Uncertainty quantification** (Kalman covariance)
+ **Temporal smoothing** (state evolution)
+ **Spatial multi-resolution** (0.1° + 0.5° combined)
+ **Operational robustness** (fallback mechanisms)
 
 **Impact for Users**: Replacing single-source ETo with EVAonline fusion **reduces error by ~50%** and nearly **eliminates systematic bias**, resulting in more accurate irrigation scheduling, crop water requirement estimation, and hydrological modeling for Brazil.
 
@@ -278,4 +259,4 @@ EVAonline:       [0.721 to 0.885]   → Range: 0.164 (low variability) ✅
 
 - Gupta, H. V., Kling, H., Yilmaz, K. K., & Martinez, G. F. (2009). Decomposition of the mean squared error and NSE performance criteria: Implications for improving hydrological modelling. *Journal of Hydrology*, 377(1-2), 80-91.
 - Moriasi, D. N., et al. (2007). Model evaluation guidelines for systematic quantification of accuracy in watershed simulations. *Transactions of the ASABE*, 50(3), 885-900.
-- Nash, J. E., & Sutcliffe, J. V. (1970). River flow forecasting through conceptual models part I—A discussion of principles. *Journal of Hydrology*, 10(3), 282-290.
+- Nash, J. E., & Sutcliffe, J. V. (1970). River flow forecasting through conceptual models part I - A discussion of principles. *Journal of Hydrology*, 10(3), 282-290.

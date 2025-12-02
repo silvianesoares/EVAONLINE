@@ -1,14 +1,14 @@
 """
-Sync Adapter para Open-Meteo Forecast API.
+Sync Adapter for Open-Meteo Forecast API.
 
-Converte chamadas assíncronas do OpenMeteoForecastClient em métodos síncronos
-para compatibilidade com Celery tasks e scripts legados.
+Converts asynchronous calls from OpenMeteoForecastClient to synchronous methods
+for compatibility with Celery tasks and legacy scripts.
 
 API: https://api.open-meteo.com/v1/forecast
-Cobertura: Global
-Período: (hoje - 25 dias) até (hoje + 5 dias) = 30 dias totais
-Resolução: Diária (agregada de dados horários)
-Licença: CC BY 4.0 (atribuição obrigatória)
+Coverage: Global
+Period: (today - 25 days) to (today + 5 days) = 30 days total
+Resolution: Daily (aggregated from hourly data)
+License: CC BY 4.0 (attribution required)
 
 Variables (10):
 - Temperature: max, mean, min (°C)
@@ -19,9 +19,9 @@ Variables (10):
 - ET0 FAO Evapotranspiration (mm)
 
 CACHE STRATEGY (Nov 2025):
-- Redis cache via ClimateCache (recomendado)
+- Redis cache via ClimateCache (recommended)
 - Fallback: requests_cache local
-- TTL dinâmico: 1h (forecast), 6h (recent)
+- Dynamic TTL: 1h (forecast), 6h (recent)
 """
 
 import asyncio
@@ -38,25 +38,25 @@ from scripts.api.services.openmeteo_forecast.openmeteo_forecast_client import (
 
 class OpenMeteoForecastSyncAdapter:
     """
-    Adapter síncrono para Open-Meteo Forecast API.
+    Synchronous adapter for Open-Meteo Forecast API.
 
-    Suporta Redis cache (via ClimateCache) com fallback para cache local.
+    Supports Redis cache (via ClimateCache) with fallback to local cache.
     """
 
     def __init__(self, cache: Any | None = None, cache_dir: str = ".cache"):
         """
-        Inicializa adapter síncrono.
+        Initialize synchronous adapter.
 
         Args:
             cache: Optional ClimateCache instance (Redis)
-            cache_dir: Diretório para fallback cache (TTL: 6 horas)
+            cache_dir: Directory for fallback cache (TTL: 6 hours)
 
         Features:
-            - Recent data: hoje - 30 dias
-            - Forecast data: hoje + 5 dias (padronizado)
-            - Best match model: Seleciona melhor modelo disponível
-            - 10 climate variables com unidades padronizadas
-            - Redis cache compartilhado entre workers
+            - Recent data: today - 25 days
+            - Forecast data: today + 5 days (standardized)
+            - Best match model: Selects best available model
+            - 10 climate variables with standardized units
+            - Shared Redis cache between workers
         """
         self.cache = cache  # Redis cache (opcional)
         self.cache_dir = cache_dir
@@ -75,24 +75,16 @@ class OpenMeteoForecastSyncAdapter:
         end_date: Union[str, datetime],
     ) -> List[Dict[str, Any]]:
         """
-        Baixa dados recentes/futuros de forma SÍNCRONA.
+        Download recent/future data SYNCHRONOUSLY.
 
         Args:
-            lat: Latitude (-90 a 90)
-            lon: Longitude (-180 a 180)
-            start_date: Data inicial (str ou datetime)
-            end_date: Data final (str ou datetime)
+            lat: Latitude (-90 to 90)
+            lon: Longitude (-180 to 180)
+            start_date: Start date (str or datetime)
+            end_date: End date (str or datetime)
 
         Returns:
-            Lista de dicionários com dados diários
-
-        Example:
-            >>> adapter = OpenMeteoForecastSyncAdapter()
-            >>> data = adapter.get_daily_data_sync(
-            ...     lat=-15.7939, lon=-47.8828,
-            ...     start_date='2024-12-01',
-            ...     end_date='2024-12-07'
-            ... )
+            List of dictionaries with daily data
         """
         # Convert strings to datetime if needed
         if isinstance(start_date, str):
@@ -100,32 +92,32 @@ class OpenMeteoForecastSyncAdapter:
         if isinstance(end_date, str):
             end_date = datetime.fromisoformat(end_date)
 
-        # Validação - Forecast API: -25d to +5d (30 dias totais)
+        # Validation - Forecast API: -25d to +5d (30 days total)
         today = datetime.now().date()
         min_date = today - timedelta(days=25)
         max_date = today + timedelta(days=5)
 
         if start_date.date() < min_date:
             logger.warning(
-                f"Forecast: ajustando start_date para {min_date} "
-                f"(limite: hoje - 25 dias)"
+                f"Forecast: adjusting start_date to {min_date} "
+                f"(limit: today - 25 days)"
             )
             start_date = datetime.combine(min_date, datetime.min.time())
 
         if end_date.date() > max_date:
             logger.warning(
-                f"Forecast: ajustando end_date para {max_date} "
-                f"(limite: hoje + 5 dias padronizado)"
+                f"Forecast: adjusting end_date to {max_date} "
+                f"(limit: today + 5 days standardized)"
             )
             end_date = datetime.combine(max_date, datetime.min.time())
 
-        # Executar async de forma segura (igual Archive adapter)
+        # Execute async safely (same as Archive adapter)
         try:
-            # Tentar obter loop existente
+            # Try to get existing loop
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # Loop já está rodando (contexto de servidor async)
-                # Criar nova task no loop existente
+                # Loop is already running (async server context)
+                # Create new task in existing loop
                 import concurrent.futures
 
                 with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -135,12 +127,12 @@ class OpenMeteoForecastSyncAdapter:
                     )
                     return future.result()
             else:
-                # Loop existe mas não está rodando
+                # Loop exists but is not running
                 return loop.run_until_complete(
                     self._async_get_data(lat, lon, start_date, end_date)
                 )
         except RuntimeError:
-            # Nenhum loop, criar um novo
+            # No loop exists, create a new one
             return asyncio.run(
                 self._async_get_data(lat, lon, start_date, end_date)
             )
@@ -153,9 +145,9 @@ class OpenMeteoForecastSyncAdapter:
         end_date: datetime,
     ) -> List[Dict[str, Any]]:
         """
-        Implementação async interna.
+        Internal async implementation.
 
-        Usa best_match model, past_days=30, e wind_speed_unit=ms.
+        Uses best_match model, past_days=25, and wind_speed_unit=ms.
         """
         try:
             client = OpenMeteoForecastClient(
@@ -169,16 +161,16 @@ class OpenMeteoForecastSyncAdapter:
                 end_date=end_date.strftime("%Y-%m-%d"),
             )
 
-            # Extrair dados do response
+            # Extract data from response
             daily_data = response["climate_data"]
             dates = pd.to_datetime(daily_data["dates"])
 
-            # Converter para lista de dicionários
+            # Convert to list of dictionaries
             records = []
             for i, date in enumerate(dates):
                 record = {"date": date.date()}
 
-                # Adicionar todas as variáveis disponíveis
+                # Add all available variables
                 for key, values in daily_data.items():
                     if key != "dates" and isinstance(values, list):
                         record[key] = values[i] if i < len(values) else None
@@ -186,14 +178,14 @@ class OpenMeteoForecastSyncAdapter:
                 records.append(record)
 
             logger.info(
-                f"✅ Forecast: {len(records)} registros diários "
-                f"para ({lat:.4f}, {lon:.4f}) | "
-                f"10 variáveis climáticas"
+                f"Forecast: {len(records)} daily records "
+                f"for ({lat:.4f}, {lon:.4f}) | "
+                f"10 climate variables"
             )
             return records
 
         except Exception as e:
-            logger.error(f"❌ Forecast: erro ao baixar dados: {str(e)}")
+            logger.error(f"Forecast: error downloading data: {str(e)}")
             raise
 
     def get_forecast_sync(
@@ -203,14 +195,14 @@ class OpenMeteoForecastSyncAdapter:
         days: int = 5,
     ) -> List[Dict[str, Any]]:
         """
-        Baixa previsões futuras de forma SÍNCRONA.
+        Download future forecasts SYNCHRONOUSLY.
         """
         if not 1 <= days <= 5:
-            msg = "Forecast: dias deve ser entre 1 e 5"
+            msg = "Forecast: days must be between 1 and 5"
             logger.error(msg)
             raise ValueError(msg)
 
-        # Calcular período
+        # Calculate period
         start_date = datetime.now()
         end_date = start_date + timedelta(days=days - 1)
 
@@ -218,7 +210,7 @@ class OpenMeteoForecastSyncAdapter:
 
     def health_check_sync(self) -> bool:
         """
-        Verifica se Forecast API está acessível (síncrono).
+        Check if Forecast API is accessible (synchronous).
         """
         try:
             # Tentar obter loop existente
@@ -233,25 +225,25 @@ class OpenMeteoForecastSyncAdapter:
                     )
                     return future.result()
             else:
-                # Loop existe mas não está rodando
+                # Loop exists but is not running
                 return loop.run_until_complete(self._async_health_check())
         except RuntimeError:
-            # Nenhum loop, criar um novo
+            # No loop exists, create a new one
             return asyncio.run(self._async_health_check())
 
     async def _async_health_check(self) -> bool:
         """
-        Implementação async do health check.
+        Async implementation of health check.
 
-        Testa: Brasília, data atual, best_match model.
+        Tests: Brasilia, current date, best_match model.
         """
         try:
             client = OpenMeteoForecastClient(
                 cache=self.cache, cache_dir=self.cache_dir
             )
 
-            # Testar com coordenadas de referência (Brasília)
-            # Usar data atual (Forecast API sempre tem)
+            # Test with reference coordinates (Brasilia)
+            # Use current date (Forecast API always has it)
             today = datetime.now().date()
             response = await client.get_climate_data(
                 lat=-15.7939,
@@ -265,17 +257,17 @@ class OpenMeteoForecastSyncAdapter:
             return has_data and has_dates
 
         except Exception as e:
-            logger.error(f"Forecast: health check falhou: {str(e)}")
+            logger.error(f"Forecast: health check failed: {str(e)}")
             return False
 
     @staticmethod
     def get_info() -> Dict[str, Any]:
         """
-        Retorna informações sobre a fonte de dados Forecast API.
+        Return information about the Forecast API data source.
 
-        Inclui: coverage, period, variables, license, model, units.
+        Includes: coverage, period, variables, license, model, units.
 
         Returns:
-            Dicionário com metadados completos da fonte
+            Dictionary with complete source metadata
         """
         return OpenMeteoForecastClient.get_info()

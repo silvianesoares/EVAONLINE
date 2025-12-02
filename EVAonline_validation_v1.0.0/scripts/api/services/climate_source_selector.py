@@ -9,10 +9,10 @@ Available APIs:
         Forecast + Stations real-time
 
     - Open-Meteo Forecast (Global - Worldwide):
-        Global standard, real-time (-30d to +5d)
+        Global standard, real-time (-29d to +5d)
 
     - Open-Meteo Archive (Global - Worldwide):
-        Historical data (1940-present)
+        Historical data (1990-present)
 
     - MET Norway (Global* - Worldwide):
         Global coverage, optimized for Europe
@@ -25,7 +25,7 @@ from typing import Any, Literal
 
 from loguru import logger
 
-from validation_logic_eto.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.geographic_utils import GeographicUtils
 
 # Type hints for climate sources
 ClimateSource = Literal[
@@ -87,23 +87,6 @@ class ClimateSourceSelector:
 
         Returns:
             Recommended source name
-
-        Examples:
-            # New York, USA
-            >>> ClimateSourceSelector.select_source(40.7128, -74.0060)
-            'nws_forecast'
-
-            # Oslo, Norway (Nordic region)
-            >>> ClimateSourceSelector.select_source(59.9139, 10.7522)
-            'met_norway'
-
-            # Paris, France
-            >>> ClimateSourceSelector.select_source(48.8566, 2.3522)
-            'openmeteo_forecast'
-
-            # Brasília, Brazil
-            >>> ClimateSourceSelector.select_source(-15.7939, -47.8828)
-            'openmeteo_forecast'
         """
         # Priority 1: USA (NWS Forecast)
         if GeographicUtils.is_in_usa(lat, lon):
@@ -125,47 +108,6 @@ class ClimateSourceSelector:
         return "openmeteo_forecast"
 
     @classmethod
-    def get_client(cls, lat: float, lon: float):
-        """
-        Return appropriate client for coordinates.
-
-        Combines select_source() with ClimateClientFactory to
-        return pre-configured, ready-to-use client.
-
-        Args:
-            lat: Latitude
-            lon: Longitude
-
-        Returns:
-            Configured climate client
-
-        Examples:
-            # Get automatic client for Paris
-            >>> client = ClimateSourceSelector.get_client(
-            ...     lat=48.8566, lon=2.3522
-            ... )
-            # → METNorwayClient with injected cache
-
-            >>> data = await client.get_forecast_data(...)
-            >>> await client.close()
-        """
-        # Lazy import to avoid circular dependencies
-        from validation_logic_eto.api.services.climate_factory import (
-            ClimateClientFactory,
-        )
-
-        source = cls.select_source(lat, lon)
-        factory_method = cls._SOURCE_TO_CLIENT_MAP.get(source)
-
-        if not factory_method:
-            logger.warning(
-                f"Unknown source '{source}', falling back to NASA POWER"
-            )
-            return ClimateClientFactory.create_nasa_power()
-
-        return getattr(ClimateClientFactory, factory_method)()
-
-    @classmethod
     def get_all_sources(cls, lat: float, lon: float) -> list[ClimateSource]:
         """
         Return ALL available sources for coordinates.
@@ -185,15 +127,6 @@ class ClimateSourceSelector:
 
         Returns:
             List of applicable sources, ordered by priority
-
-        Examples:
-            # Oslo (Nordic Region)
-            >>> ClimateSourceSelector.get_all_sources(59.9139, 10.7522)
-            ['met_norway', 'openmeteo_forecast', 'nasa_power', ...]
-
-            # Brasília (global only)
-            >>> ClimateSourceSelector.get_all_sources(-15.7939, -47.8828)
-            ['openmeteo_forecast', 'met_norway', 'nasa_power', ...]
         """
         sources: list[ClimateSource] = []
 
@@ -222,11 +155,6 @@ class ClimateSourceSelector:
 
         Returns:
             Dict with availability information per source
-
-        Example:
-            >>> summary = ClimateSourceSelector.get_data_availability_summary()
-            >>> summary['openmeteo_archive']['period']
-            '1940-01-01 to today-2d'
         """
         return {
             "openmeteo_archive": {
@@ -278,15 +206,6 @@ class ClimateSourceSelector:
 
         Returns:
             Dict with coverage information
-
-        Example:
-            >>> info = ClimateSourceSelector.get_coverage_info(
-            ...     48.8566, 2.3522
-            ... )
-            >>> info['recommended_source']
-            'met_norway'
-            >>> info['regional_coverage']['usa']
-            False
         """
         recommended = cls.select_source(lat, lon)
         all_sources = cls.get_all_sources(lat, lon)
@@ -374,14 +293,13 @@ def get_available_sources_for_frontend(
             "sources": [
                 {
                     "value": "fusion",
-                    "label": "🔀 Smart Fusion (Recommended)",
+                    "label": "Smart Fusion (Recommended)",
                     "description": "Combines multiple sources..."
                 },
                 {
                     "value": "openmeteo_forecast",
                     "label": "Open-Meteo Forecast",
                     "description": "Real-time global data",
-                    "icon": "🌍"
                 },
                 ...
             ],
@@ -392,15 +310,6 @@ def get_available_sources_for_frontend(
             },
             "total_sources": 6
         }
-
-    Example:
-        >>> sources = get_available_sources_for_frontend(
-        ...     lat=59.9139, lon=10.7522
-        ... )
-        >>> sources['location_info']['region']
-        'Nordic Region'
-        >>> len(sources['sources'])
-        7  # fusion + 6 individual sources
     """
     # Detect region
     in_usa = GeographicUtils.is_in_usa(lat, lon)

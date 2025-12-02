@@ -1,115 +1,108 @@
 # EVAonline Jupyter Notebooks
 
-Este diretório contém notebooks Jupyter demonstrando o uso das APIs climáticas do EVAonline.
+This directory contains Jupyter notebooks demonstrating the use of EVAonline climate APIs.
 
-## 📚 Notebooks Disponíveis
+### Individual API Demonstrations (with Real Data)
 
-### Validação e Sistema Principal
+Each notebook demonstrates how to download and visualize real data from a specific climate API:
 
-1. **01_validation_kalman.ipynb** - Validação do sistema Kalman Fusion (2 APIs globais)
-2. **quick_start_example.ipynb** - Exemplo rápido de uso do EVAonline
+1. **01_nasa_power_api_demo.ipynb** - NASA POWER API
+   - Coverage: Global
+   - Period: 1990-present
+   - Variables: 7 (temp, humidity, wind, solar, precipitation)
+   - Example: Piracicaba/SP (ESALQ/USP)
 
-### Demonstração Individual das APIs (com Dados Reais)
+2. **02_openmeteo_archive_api_demo.ipynb** - Open-Meteo Archive API
+   - Coverage: Global
+   - Period: 1990 until today-30 days
+   - Variables: 10 (temp, humidity, wind, solar, precipitation, ET0)
+   - Example: Brasília/DF
 
-Cada notebook demonstra como baixar e visualizar dados reais de uma API climática específica:
+3. **03_openmeteo_forecast_api_demo.ipynb** - Open-Meteo Forecast API
+   - Coverage: Global
+   - Period: Today-25 days until today+5 days = 30 days
+   - Variables: 10 (temp, humidity, wind, solar, precipitation, ET0)
+   - Example: São Paulo/SP (recent data + forecast)
 
-3. **02_nasa_power_api_demo.ipynb** - NASA POWER API
-   - Cobertura: Global
-   - Período: 1981-presente
-   - Variáveis: 7 (temp, humidity, wind, solar, precipitation)
-   - Exemplo: Piracicaba/SP (ESALQ/USP)
+4. **04_met_norway_api_demo.ipynb** - MET Norway API
+   - Coverage: Global (regional strategy)
+   - Period: Daily data
+   - Variables: 8 (temp, humidity, wind, precipitation*)
+   - Examples: Oslo (Nordic + precipitation) vs Rio de Janeiro (Global - no precipitation)
 
-4. **03_openmeteo_archive_api_demo.ipynb** - Open-Meteo Archive API
-   - Cobertura: Global
-   - Período: 1940 até hoje-30 dias
-   - Variáveis: 10 (temp, humidity, wind, solar, precipitation, ET0)
-   - Exemplo: Brasília/DF
+5. **05_nws_forecast_api_demo.ipynb** - NWS Forecast API (NOAA)
+   - Coverage: USA Continental + Alaska/Hawaii
+   - Period: Forecast up to 6 days
+   - Variables: 6 (temp, humidity, wind, precipitation)
+   - Examples: New York City and San Francisco
 
-5. **04_openmeteo_forecast_api_demo.ipynb** - Open-Meteo Forecast API
-   - Cobertura: Global
-   - Período: Hoje-25 dias até hoje+5 dias
-   - Variáveis: 10 (temp, humidity, wind, solar, precipitation, ET0)
-   - Exemplo: São Paulo/SP (dados recentes + previsão)
-
-6. **05_met_norway_api_demo.ipynb** - MET Norway API
-   - Cobertura: Global (estratégia regional)
-   - Período: Dados diários
-   - Variáveis: 8 (temp, humidity, wind, precipitation*)
-   - Exemplos: Oslo (Nordic + precipitação) vs Rio de Janeiro (Global - sem precipitação)
-
-7. **06_nws_forecast_api_demo.ipynb** - NWS Forecast API (NOAA)
-   - Cobertura: USA Continental + Alaska/Hawaii
-   - Período: Previsão até 7 dias
-   - Variáveis: 7 (temp, humidity, wind, precipitation)
-   - Exemplos: New York City e San Francisco
-
-8. **07_nws_stations_api_demo.ipynb** - NWS Stations API (NOAA)
-   - Cobertura: USA (~1,800 estações)
-   - Período: Dados observacionais horários (agregados diários)
-   - Variáveis: 7 (temp, humidity, wind, solar, precipitation)
-   - Exemplos: Chicago e Miami
+6. **06_nws_stations_api_demo.ipynb** - NWS Stations API (NOAA)
+   - Coverage: USA (~1,800 stations)
+   - Period: Hourly observational data (aggregated daily)
+   - Variables: 7 (temp, humidity, wind, solar, precipitation)
+   - Examples: Fairplay, Park, Colorado and Miami
 
 ---
 
-## 🎯 Arquitetura EVAonline
+## EVAonline Architecture
 
-O sistema EVAonline integra **6 APIs climáticas** em uma estratégia de fusão Kalman:
+The EVAonline system integrates **6 climate APIs** in an adaptive Kalman fusion strategy:
 
-### APIs de Validação (Globais)
-- **NASA POWER** - Dados históricos globais (1981-presente)
-- **Open-Meteo Archive** - Dados históricos globais (1940-hoje-30d)
+### Validation APIs (Global)
+- **NASA POWER** - Global historical data (1990-present)
+- **Open-Meteo Archive** - Global historical data (1990-today-30d)
 
-### APIs Operacionais (Regionais)
-- **Open-Meteo Forecast** - Previsão global (hoje-25d até hoje+5d)
-- **MET Norway** - Cobertura global com especialização nórdica
-- **NWS Forecast** - Previsão oficial USA (NOAA)
-- **NWS Stations** - Observações em tempo real USA
+### Operational APIs (Regional)
+- **Open-Meteo Forecast** - Global forecast (today-25d until today+5d = 30 days)
+- **MET Norway** - Global coverage with Nordic specialization
+- **NWS Forecast** - Official USA forecast (NOAA)
+- **NWS Stations** - Real-time observations USA
 
 ---
 
-## 🚀 Como Usar
+## How to Use
 
-### Pré-requisitos
+### Prerequisites
 
 ```bash
-# Criar ambiente conda
+# Create conda environment
 conda env create -f ../environment.yml
 conda activate evaonline_validation
 
-# Ou usar pip
+# Or use pip
 pip install -r ../requirements.txt
 ```
 
-### Executar Notebooks
+### Running Notebooks
 
 ```bash
-# Navegar para o diretório de notebooks
+# Navigate to notebooks directory
 cd EVAonline_validation_v1.0.0/notebooks
 
-# Iniciar Jupyter Lab
+# Start Jupyter Lab
 jupyter lab
 
-# Ou Jupyter Notebook
+# Or Jupyter Notebook
 jupyter notebook
 ```
 
-### Estrutura de Cada Notebook
+### Structure of Each Notebook
 
-Todos os notebooks de demonstração de API seguem a mesma estrutura:
+All API demonstration notebooks follow the same structure:
 
-1. **Importações e Configuração** - Setup do ambiente Python
-2. **Inicializar Cliente** - Criar adapter da API
-3. **Baixar Dados Reais** - Requisições com coordenadas reais
-4. **Converter para DataFrame** - Exploração com pandas
-5. **Visualizações** - Gráficos com matplotlib/seaborn
-6. **Health Check** - Verificar disponibilidade da API
-7. **Salvar Dados** - Exportar CSV para análises futuras
+1. **Imports and Configuration** - Python environment setup
+2. **Initialize Client** - Create API adapter
+3. **Download Real Data** - Requests with real coordinates
+4. **Convert to DataFrame** - Exploration with pandas
+5. **Visualizations** - Charts with matplotlib/seaborn
+6. **Health Check** - Verify API availability
+7. **Save Data** - Export CSV for future analyses
 
 ---
 
-## 📊 Dados Gerados
+## Generated Data
 
-Os notebooks salvam dados em `../data/csv/`:
+Notebook data is saved in `../data/csv/`:
 
 ```
 data/csv/
@@ -120,86 +113,84 @@ data/csv/
 ├── met_norway_rio_demo.csv
 ├── nws_forecast_nyc_demo.csv
 ├── nws_forecast_sf_demo.csv
-├── nws_stations_chicago_demo.csv
+├── nws_stations_fairplay_demo.csv
 └── nws_stations_miami_demo.csv
-```
+```---
 
----
+## Troubleshooting
 
-## 🔧 Troubleshooting
+### Import Error
 
-### Erro de Import
-
-Se encontrar erro `ModuleNotFoundError`, verifique que o path dos scripts está correto:
+If you encounter `ModuleNotFoundError`, verify that the scripts path is correct:
 
 ```python
 import sys
 from pathlib import Path
 
 project_root = Path.cwd().parent
-scripts_path = project_root / "scripts"
-sys.path.insert(0, str(scripts_path))
+sys.path.insert(0, str(project_root))
 ```
 
-### Erro de API
+### API Error
 
-Se a API não responder:
+If the API does not respond:
 
-1. Verifique sua conexão com internet
-2. Consulte o health check no final do notebook
-3. Verifique os limites de rate da API (alguns endpoints têm throttling)
+1. Check your internet connection
+2. Consult the health check at the end of the notebook
+3. Check API rate limits (some endpoints have throttling)
 
-### Dados Faltantes
+### Missing Data
 
-Algumas APIs podem retornar valores `None`/`NaN` para variáveis não disponíveis:
-- **MET Norway**: Precipitação disponível apenas na Nordic Region
-- **NWS APIs**: Cobertura limitada aos EUA
-- **OpenMeteo Archive**: Dados mais antigos podem ter lacunas
+Some APIs may return `None`/`NaN` values for unavailable variables:
+- **MET Norway**: Precipitation available only in Nordic Region
+- **NWS APIs**: Coverage limited to USA
 
 ---
 
-## 📚 Referências
+## References
 
-### APIs Utilizadas
+### APIs Used
 
 1. **NASA POWER**
    - URL: https://power.larc.nasa.gov/
-   - Licença: Public Domain
+   - API: https://power.larc.nasa.gov/docs/tutorials/api-getting-started/
+   - License: Public Domain
 
 2. **Open-Meteo**
    - URL: https://open-meteo.com/
-   - DOI: 10.5281/zenodo.14582479
-   - Licença: CC BY 4.0
+   - DOI: https://doi.org/10.5281/zenodo.14582479
+   - Data License: CC BY 4.0
+   - Open-Meteo is open-source, License: GNU Affero General Public Licence Version 3 AGPLv3
+   - GitHub: https://github.com/open-meteo/open-meteo
 
 3. **MET Norway**
    - URL: https://www.met.no/
-   - Licença: CC BY 4.0
+   - API: https://api.met.no/weatherapi/locationforecast/2.0/documentation
+   - License: Norwegian Licence for Open Government Data (NLOD) 2.0 and Creative Commons 4.0 BY International
 
 4. **NWS (NOAA)**
    - URL: https://www.weather.gov/
-   - Licença: US Government Public Domain
+   - API: https://www.weather.gov/documentation/services-web-api
+   - License: US Government Public Domain
 
-### Dataset de Referência
+### Reference Dataset for Validation
 
 **Xavier BR-DWGD** (Brazilian Daily Weather Gridded Data)
-- Período: 1961-01-01 a 2024-03-20
-- Resolução: 0.1° × 0.1°
-- Estações: 3,625+ estações meteorológicas
-- URL: https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data
+- Period: 1961-01-01 to 2024-03-20
+- Resolution: 0.1° × 0.1°
+- URL: https://sites.google.com/site/alexandrecandidoxavierufes/brazilian-daily-weather-gridded-data---
 
----
+## Citation
 
-## 📖 Citação
-
-Se utilizar estes notebooks em sua pesquisa, por favor cite:
+If you use these notebooks in your research, please cite:
 
 ```bibtex
-@software{soares2024evaonline,
-  author = {Soares, Silviane Carvalho and 
-            Maciel, Rodrigo Aparecido Fonseca and 
-            Marques, Paulo Augusto Manfron Moraes},
+@software{evaonline2025,
+  author = {Soares, Ângela Silviane Moura Cunha and
+            Maciel, Carlos Dias and
+            Marques, Patricia Angélica Alves},
   title = {EVAonline Validation Dataset (1991-2020)},
-  year = {2024},
+  year = {2025},
   publisher = {Zenodo},
   url = {https://github.com/silvianesoares/EVAONLINE}
 }
@@ -207,26 +198,26 @@ Se utilizar estes notebooks em sua pesquisa, por favor cite:
 
 ---
 
-## 📝 Licença
+## License
 
-- **Código**: AGPL-3.0-or-later
-- **Dados**: Seguem licenças das APIs originais (veja referências acima)
-
----
-
-## 👥 Autores
-
-- **Silviane Carvalho Soares** - ESALQ/USP - https://orcid.org/0000-0002-1253-7193
-- **Rodrigo Aparecido Fonseca Maciel** - UNESP - https://orcid.org/0000-0003-0137-6678
-- **Paulo Augusto Manfron Moraes Marques** - ESALQ/USP - https://orcid.org/0000-0002-6818-4833
+- **Code**: AGPL-3.0
+- **Data**: Follow licenses of original APIs (see references above)
 
 ---
 
-## 📧 Contato
+## Authors
+
+- **Ângela Silviane Moura Cunha Soares** - ESALQ/USP - https://orcid.org/0000-0002-1253-7193
+- **Carlos Dias Maciel** - UNESP - https://orcid.org/0000-0003-0137-6678
+- **Patricia Angélica Alves Marques** - ESALQ/USP - https://orcid.org/0000-0002-6818-4833
+
+---
+
+## Contact
 
 - GitHub: https://github.com/silvianesoares/EVAONLINE
 - Issues: https://github.com/silvianesoares/EVAONLINE/issues
 
 ---
 
-**Última atualização**: Novembro 2024
+**Last updated**: November 2025

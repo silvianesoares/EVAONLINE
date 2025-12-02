@@ -1,11 +1,7 @@
 # Matopiba Cities Map: Script to generate a two-panel map showing Brazil
 # and the MATOPIBA region, with climate zones, meteorological stations,
 # and a climate legend.
-# Author: Ângela S. M. C. Soares, Profº Carlos D. Maciel and
-#         Profª Patricia A. A. Marques
-# Date: July 10, 2025
 # Output: study_area_map.png
-
 
 import pandas as pd
 import geopandas as gpd

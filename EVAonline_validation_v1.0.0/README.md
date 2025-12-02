@@ -1,6 +1,6 @@
 # EVAonline Validation Dataset v1.0.0
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17791398.svg)](https://doi.org/10.5281/zenodo.17791398)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Data](https://img.shields.io/badge/Data-Open%20Access-brightgreen.svg)](https://zenodo.org/)
 
@@ -405,8 +405,8 @@ If you use this dataset, please cite:
   year         = {2025},
   publisher    = {Zenodo},
   version      = {1.0.0},
-  doi          = {10.5281/zenodo.XXXXXXX},
-  url          = {https://doi.org/10.5281/zenodo.XXXXXXX}
+  doi          = {10.5281/zenodo.17791398},
+  url          = {https://doi.org/10.5281/zenodo.17791398}
 }
 ```
 
@@ -487,7 +487,7 @@ For major changes, open an issue first to discuss proposed changes.
 
 - **Repository**: https://github.com/silvianesoares/EVAONLINE
 - **Issues**: https://github.com/silvianesoares/EVAONLINE/issues
-- **Zenodo**: https://doi.org/10.5281/zenodo.XXXXXXX
+- **Zenodo**: https://doi.org/10.5281/zenodo.17791398
 
 ---
 

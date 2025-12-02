@@ -4,7 +4,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Data](https://img.shields.io/badge/Data-Open%20Access-brightgreen.svg)](https://zenodo.org/)
 
-**Complete validation dataset for EVAOnline: Validation Dataset v1.0.0: Adaptive Kalman Fusion System for Reference Evapotranspiration in Brazil (1991-2020)**
+**Complete validation dataset for EVAonline: Validation Dataset v1.0.0: Adaptive Kalman Fusion System for Reference Evapotranspiration in Brazil (1991-2020)**
 
 ---
 
@@ -195,7 +195,7 @@ EVAonline_validation_v1.0.0/
 ### Overview
 
 | Source | Resolution | Period | Latency | Purpose |
-|--------|-----------|--------|---------|---------||
+|--------|-----------|--------|---------|---------|
 | **Xavier BR-DWGD** | 0.1° (~10 km) | 1961-2024 | 6-12 months | Reference ✅ |
 | **NASA POWER** | 0.5° × 0.625° (~55 km) | 1981-present | 5-7 days | Global reanalysis (validation) |
 | **Open-Meteo Archive** | 0.1° (~10 km) | 1940-present | 5-7 days | High-res reanalysis (validation) |

@@ -6,8 +6,8 @@ and manages data fusion from multiple sources.
 
 IMPORTANT: This module does NOT perform date/period validations.
 Input validations: climate_validation.py
-Temporal availability: climate_source_availability.py
 Intelligent selection: climate_source_selector.py
+Temporal availability: climate_source_availability.py
 """
 
 from datetime import date, datetime, timedelta
@@ -60,23 +60,33 @@ class ClimateSourceManager:
     All sources: DAILY
         * Used for world map dashboard (any point)
         * Daily data with 3 operation modes:
-          - Historical_email: 1-90 days (end <= today-29d, email delivery)
-          - Dashboard_current: [7,14,21,30] days (end = today, web)
-          - Dashboard_forecast: 6 fixed days (today -> today+5d, web)
+          - Historical_email: min 1d, max 90d (end=today-2d, email delivery)
+          - Dashboard_current: [7,14,21,30] days (end=today, web)
+          - Dashboard_forecast: 6 fixed days (end=today+5d, web)
         * On-demand (user click)
         * Multi-source fusion available
 
     Configured Sources (6 sources):
     -------------------------------
-    Global:
-    - Open-Meteo Archive: Historical (1990 -> Today-2d), CC-BY-4.0
-    - Open-Meteo Forecast: Forecast (Today-29d -> Today+5d), CC-BY-4.0
-    - NASA POWER: Historical (1990 -> Today-2-7d), Public Domain
-    - MET Norway: Global forecast (Today -> Today+5d), CC-BY-4.0
+    EVAonline rules (3 operation modes):
+    1. HISTORICAL_EMAIL: 1-90 days (email, free choice)
+    - NASA POWER: start 1990/01/01, end today-2d (with 2d delay)
+    - Open-Meteo Archive: start 1990/01/01, end today-2d (with 2d delay)
 
-    USA Continental:
-    - NWS Forecast: Forecast (Today -> Today+5d), Public Domain
-    - NWS Stations: Observations (Today-1d -> Now), Public Domain
+    2. DASHBOARD_CURRENT: [7,14,21,30] days, end=today fixed (web, dropdown)
+    - NASA POWER: start today-29d, end today-2d (28 days max, 2d delay)
+    - Open-Meteo Archive: start today-29d, end today-2d (28 days max, 2d delay)
+    - Open-Meteo Forecast: start today-29d, end today (30 days max, no delay)
+
+    3. DASHBOARD_FORECAST: 6 days fixed (today -> today+5d), web forecasts
+    IF USA: radio button "Data Fusion" OR "Real station data"
+    3.1. Fusion (default):
+        * Open-Meteo Forecast: start today, end today+5d
+        * MET Norway: start today, end today+5d (global, nordic region)
+        * NWS Forecast: start today, end today+5d (USA only)
+
+    3.2. Stations (USA only):
+        * NWS Stations: start today-2d, end today (realtime)
 
     IMPORTANT: Bounding boxes centralized in GeographicUtils
     """
@@ -162,7 +172,7 @@ class ClimateSourceManager:
                 "ALLSKY_SFC_SW_DWN",
                 "PRECTOTCORR",
             ],
-            "delay_hours": 72,
+            "delay_hours": 48,
             "update_frequency": "daily",
             "historical_start": "1990-01-01",
             "restrictions": {"limit_requests": 1000},
@@ -222,7 +232,7 @@ class ClimateSourceManager:
             "restrictions": {
                 "attribution_required": True,
                 "user_agent_required": True,
-                "data_window_days": 30,
+                "data_window_days": 2,
             },
             "use_case": "USA station observations",
         },
@@ -442,19 +452,25 @@ class ClimateSourceManager:
 
         # Define representative period for each mode
         if mode == OperationMode.HISTORICAL_EMAIL:
-            # Historical: end <= today - 30d
-            start_date = today - timedelta(days=60)
-            end_date = today - timedelta(days=30)
+            # Historical: start=1990/01/01, end=today-2d
+            # Open-Meteo Archive and NASA POWER
+            start_date = date(1990, 1, 1)
+            end_date = today - timedelta(days=2)
+
         elif mode == OperationMode.DASHBOARD_CURRENT:
-            # Current: end = today, period in [7,14,21,30]
-            start_date = today - timedelta(days=30)
+            # Current: start=today-29d, end=today, period in [7,14,21,30]
+            # Open-Meteo Archive, Open-Meteo Forecast, NASA POWER
+            start_date = today - timedelta(days=29)
             end_date = today
+
         elif mode == OperationMode.DASHBOARD_FORECAST:
-            # Forecast: today -> today+5d
+            # Forecast: start=today, end=today+5d
+            # Open-Meteo Forecast, MET Norway, NWS Forecast
             start_date = today
             end_date = today + timedelta(days=5)
+
         else:
-            # Default: use current
+            # Default: use current (min 7 days)
             start_date = today - timedelta(days=7)
             end_date = today
 
@@ -462,8 +478,8 @@ class ClimateSourceManager:
 
         for source_id in available_sources:
             # Check temporal compatibility
-            availability = ClimateSourceAvailability.check_source_availability(
-                source_id, lat, lon, start_date, end_date
+            availability = ClimateSourceAvailability.get_available_sources(
+                start_date, end_date, lat, lon
             )
             if availability["available"]:
                 compatible_sources.append(source_id)
@@ -538,12 +554,15 @@ class ClimateSourceManager:
             today = date.today()
             period_days = (end_date - start_date).days + 1
 
-            if end_date <= today - timedelta(days=30):
+            if end_date <= today - timedelta(days=2):
                 mode = OperationMode.HISTORICAL_EMAIL
+
             elif end_date == today:
                 mode = OperationMode.DASHBOARD_CURRENT
+
             elif end_date > today:
                 mode = OperationMode.DASHBOARD_FORECAST
+
             else:
                 mode = OperationMode.DASHBOARD_CURRENT
 
@@ -561,19 +580,17 @@ class ClimateSourceManager:
         period_days = (end_date - start_date).days + 1
 
         if mode == OperationMode.HISTORICAL_EMAIL:
-            # Historical: end <= today - 30d
-            max_end = today - timedelta(days=30)
+            # Historical: end <= today - 2d
+            max_end = today - timedelta(days=2)
             if end_date > max_end:
                 warnings.append(
                     f"Historical mode: end_date {end_date} > "
-                    f"maximum {max_end} (today-30d). "
+                    f"maximum {max_end} (today-2d). "
                     f"Some sources may not have data."
                 )
             # VALIDATION MODE: Allow flexible period (not just 1-90)
             if period_days < 1:
-                raise ValueError(
-                    f"Period must be >= 1 day, got {period_days}"
-                )
+                raise ValueError(f"Period must be >= 1 day, got {period_days}")
 
         elif mode == OperationMode.DASHBOARD_CURRENT:
             # Current: end = today, period in [7,14,21,30]
@@ -759,9 +776,7 @@ class ClimateSourceManager:
         if bbox is None:
             return "Global"
         west, south, east, north = bbox
-        return (
-            f"[{west:.1f}W, {south:.1f}S] to [{east:.1f}E, {north:.1f}N]"
-        )
+        return f"[{west:.1f}W, {south:.1f}S] to [{east:.1f}E, {north:.1f}N]"
 
     def _is_point_covered(
         self, lat: float, lon: float, metadata: dict[str, Any]

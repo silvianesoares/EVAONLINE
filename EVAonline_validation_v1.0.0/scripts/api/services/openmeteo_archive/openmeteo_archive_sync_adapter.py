@@ -5,9 +5,12 @@ Converts asynchronous calls from OpenMeteoArchiveClient to synchronous methods
 for compatibility with Celery tasks.
 
 API: https://archive-api.open-meteo.com/v1/archive
+
 Coverage: Global
-Period: 1990-01-01 to today-30 days (historical_email mode)
-License: CC BY 4.0 (attribution required)
+
+- Archived Data
+- Start: 1990/01/01
+- End: Today - 2 days (EVAonline standard)
 
 Variables (10):
 - Temperature: max, mean, min (°C)
@@ -39,7 +42,7 @@ class OpenMeteoArchiveSyncAdapter:
     """
     Synchronous adapter for Open-Meteo Archive API.
 
-    Historical data: 1990-01-01 to today-30 days (historical_email mode)
+    Historical data: 1990-01-01 to today-2 days (historical_email mode)
     Models: best_match (best available model)
     Variables: 10 climate variables (T, RH, Wind, Solar, Precip, ET0)
     Wind unit: m/s (meters per second)
@@ -55,7 +58,7 @@ class OpenMeteoArchiveSyncAdapter:
             cache_dir: Directory for fallback cache (TTL: 24h)
 
         Features:
-            - Historical data: 1990 to today-29d (historical_email mode)
+            - Historical data: 1990 to today-2 days (historical_email mode)
             - Best match model: Selects best available model
             - 10 climate variables with standardized units
             - Shared Redis cache between workers
@@ -66,7 +69,7 @@ class OpenMeteoArchiveSyncAdapter:
         cache_type = "Redis" if cache else "Local"
         logger.info(
             f"OpenMeteoArchiveSyncAdapter initialized ({cache_type} cache, "
-            f"1990 to today-29d)"
+            f"1990 to today-2 days)"
         )
 
     def get_daily_data_sync(

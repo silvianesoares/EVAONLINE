@@ -1,8 +1,12 @@
 """
 NWS Forecast Daily Sync Adapter
-
 Synchronous adapter for nws_forecast_client.py (asynchronous client).
 Converts hourly NWS Forecast data to aggregated daily data.
+
+- Forecast Data
+- Start: Today
+- End: Today + 5 days (EVAonline standard)
+- Total: 6 days forecast
 
 This adapter:
 - Wraps the asynchronous NWSForecastClient in a synchronous interface

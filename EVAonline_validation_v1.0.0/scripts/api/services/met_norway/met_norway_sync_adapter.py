@@ -1,7 +1,11 @@
 """
 Synchronous adapter for MET Norway 2.0.
-
 GLOBAL with DAILY data and REGIONAL STRATEGY.
+
+- Forecast API with GLOBAL coverage
+- Start: Today
+- End: Today + 5 days (EVAonline standard)
+- Total: 6 days of forecast
 
 This adapter allows using the asynchronous MET Norway client
 in synchronous code, facilitating integration with data_download.py.
@@ -85,13 +89,6 @@ class METNorwaySyncAdapter:
         Returns:
             List of daily data
 
-        Example:
-            > adapter = METNorwaySyncAdapter()
-            > data = adapter.get_daily_data_sync(
-                lat=60.0, lon=10.0,
-                start_date=datetime(2024, 1, 1),
-                end_date=datetime(2024, 1, 7)
-            )
         """
         return asyncio.run(
             self._async_get_daily_data(
@@ -303,6 +300,7 @@ class METNorwaySyncAdapter:
                         "air_temperature_min",
                         "air_temperature_mean",
                         "relative_humidity_mean",
+                        "wind_speed_10m_mean",
                         "precipitation_sum",
                     ],
                     "precipitation_quality": (

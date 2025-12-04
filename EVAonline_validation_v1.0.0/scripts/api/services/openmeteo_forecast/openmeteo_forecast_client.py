@@ -5,8 +5,10 @@ API: https://api.open-meteo.com/v1/forecast
 
 Coverage: Global
 
-Period: (today - 25 days) to (today + 5 days)
-Total: 30 days (25 past + 5 future)
+- Forecast Data
+- Start: Today - 29 days
+- End: Today + 5 days (EVAonline standard)
+- Total: 35 days
 
 Resolution: Daily (aggregated from hourly data)
 
@@ -55,10 +57,9 @@ class OpenMeteoForecastConfig:
     # IMPORTANT: Timeline constraints (MAX_PAST_DAYS, MAX_FUTURE_DAYS)
     # are defined in climate_source_availability.py (SOURCE OF TRUTH).
     # This client ASSUMES pre-validated dates from climate_validation.py.
-    # - MAX_PAST: 25 days (today - 25d)
-    # - MAX_FUTURE: 5 days (today + 5d)
+
     # Validation should happen BEFORE calling this client.
-    MAX_PAST_DAYS = 25  # today - 25 days
+    MAX_PAST_DAYS = 29  # today - 29 days
     MAX_FUTURE_DAYS = 5  # today + 5 days
 
     # Cache TTL (data updates daily)
@@ -106,7 +107,7 @@ class OpenMeteoForecastClient:
         cache_type = "Redis" if cache else "Local"
         logger.info(
             f"OpenMeteoForecastClient initialized ({cache_type} cache, "
-            f"-25d to +5d)"
+            f"-29d to +5d)"
         )
 
     def _setup_client(self, cache_dir: str):
@@ -134,7 +135,7 @@ class OpenMeteoForecastClient:
 
         IMPORTANT: This client ASSUMES that:
         - Coordinates validated in climate_validation.py
-        - Period (today-25d to today+5d) validated in
+        - Period (today-29d to today+5d) validated in
           climate_source_availability.py
         This client ONLY fetches data, without re-validating dates.
 
@@ -152,8 +153,8 @@ class OpenMeteoForecastClient:
         end_dt = datetime.fromisoformat(end_date)
         today = datetime.now().date()
 
-        # Forecast API: (hoje - 25d) até (hoje + 5d)
-        min_date = today - timedelta(days=25)
+        # Forecast API: (hoje - 29d) até (hoje + 5d)
+        min_date = today - timedelta(days=29)
         max_date = today + timedelta(days=5)
 
         if start_dt.date() < min_date:
@@ -204,11 +205,11 @@ class OpenMeteoForecastClient:
             forecast_days = 0
 
         # Limites da API (conforme configurado no projeto)
-        past_days = min(past_days, 25)  # Project limit: 25 past days
-        forecast_days = min(forecast_days, 16)  # API supports up to 16
+        past_days = min(past_days, 29)  # Project limit: 29 past days
+        forecast_days = min(forecast_days, 5)  # API supports up to 5
 
         # API Forecast sempre inclui hoje (day 0) automaticamente
-        # past_days=15 + hoje + forecast_days=5 = 21 dias
+        # past_days=29 + hoje + forecast_days=5 = 35 dias
         params = {
             "latitude": lat,
             "longitude": lng,
@@ -431,7 +432,7 @@ class OpenMeteoForecastClient:
         if start.date() < min_date:
             msg = (
                 f"Forecast API: start_date must be >= {min_date} "
-                f"(today - 25 days). Use Archive API for older "
+                f"(today - 29 days). Use Archive API for older "
                 f"data."
             )
             raise ValueError(msg)
@@ -452,7 +453,7 @@ class OpenMeteoForecastClient:
             Dict with API metadata
         """
         today = datetime.now().date()
-        min_date = today - timedelta(days=25)  # API supports 25 past days
+        min_date = today - timedelta(days=29)  # API supports 29 past days
         max_date = today + timedelta(days=5)  # API supports 5 future days
 
         return {

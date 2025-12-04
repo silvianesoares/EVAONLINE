@@ -1,8 +1,8 @@
 """
-Station Finder com PostGIS
-- Busca por raio usando índices espaciais
-- Cálculo de pesos por distância
-- Integração com dados históricos
+Station Finder with PostGIS
+- Search by radius using spatial indexes
+- Distance-based weight calculation
+- Integration with historical data
 """
 
 from typing import Any, Dict, List, Optional
@@ -14,12 +14,12 @@ from sqlalchemy.orm import Session
 
 class StationFinder:
     """
-    Localizador de estações com suporte a PostGIS
+    Station Locator with PostGIS support
 
-    Métodos:
-    - find_stations_in_radius: Busca por raio (usando índice espacial)
-    - get_weighted_climate_data: Dados ponderados por distância
-    - find_studied_city: Busca cidade com histórico na DB
+    Methods:
+    - find_stations_in_radius: Search by radius (using spatial index)
+    - get_weighted_climate_data: Distance-weighted data
+    - find_studied_city: Search for city with historical data in DB
     """
 
     def __init__(self, db_session: Optional[Session] = None):
@@ -34,21 +34,21 @@ class StationFinder:
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """
-        Encontra estações dentro de um raio usando PostGIS
+        Find stations within a radius using PostGIS
 
-        Query otimizada com índice GIST:
-        - Usa ST_DWithin para busca rápida
-        - Ordena por distância
-        - Retorna metadados completos
+        Optimized query with GIST index:
+        - Uses ST_DWithin for fast search
+        - Orders by distance
+        - Returns complete metadata
 
         Args:
-            target_lat: Latitude do alvo
-            target_lon: Longitude do alvo
-            radius_km: Raio de busca em km
-            limit: Máximo de estações
+            target_lat: Target latitude
+            target_lon: Target longitude
+            radius_km: Search radius in km
+            limit: Maximum number of stations
 
         Returns:
-            Lista de estações ordenadas por distância
+            List of stations ordered by distance
         """
         if not self.db_session:
             logger.warning("No DB session provided, using fallback")
@@ -93,7 +93,7 @@ class StationFinder:
                 {
                     "lat": target_lat,
                     "lon": target_lon,
-                    "radius_m": radius_km * 1000,  # Converter para metros
+                    "radius_m": radius_km * 1000,  # Convert to meters
                     "radius_km": radius_km,
                     "limit": limit,
                 },
@@ -135,18 +135,18 @@ class StationFinder:
         max_distance_km: float = 10,
     ) -> Optional[Dict[str, Any]]:
         """
-        Busca se há uma cidade estudada próxima à coordenada.
+        Search for a studied city near the coordinates.
 
-        Retorna dados históricos (normais mensais) se encontrar, caso contrário None
+        Returns historical data (monthly normals) if found, otherwise None
 
         Args:
-            target_lat: Latitude do alvo
-            target_lon: Longitude do alvo
-            max_distance_km: Distância máxima para considerar "próxima"
+            target_lat: Target latitude
+            target_lon: Target longitude
+            max_distance_km: Maximum distance to consider "nearby"
 
         Returns:
-            Dict com dados da cidade e seus normais mensais, ou None
-            Formato:
+            Dict with city data and monthly normals, or None
+            Format:
             {
                 "id": 1,
                 "city_name": "Piracicaba",
@@ -169,7 +169,7 @@ class StationFinder:
             return None
 
         try:
-            # 1 Buscar cidade próxima
+            # 1. Search for nearby city
             query = text(
                 """
             SELECT
@@ -222,7 +222,7 @@ class StationFinder:
                 f"Found studied city '{city_name}' at distance {distance_km:.2f}km"
             )
 
-            # 2 Buscar todos os normais mensais desta cidade
+            # 2. Fetch all monthly normals for this city
             normals_query = text(
                 """
             SELECT
@@ -248,13 +248,13 @@ class StationFinder:
                 normals_query, {"city_id": city_id}
             ).fetchall()
 
-            # Agrupar por mês (usar o período mais recente)
+            # Group by month (use most recent period)
             monthly_data = {}
             seen_months = set()
 
             for row in normals_result:
                 month = row[0]
-                if month not in seen_months:  # Usar período mais recente
+                if month not in seen_months:  # Use most recent period
                     monthly_data[month] = {
                         "eto_normal": row[1],
                         "eto_daily_mean": row[2],
@@ -270,7 +270,7 @@ class StationFinder:
                     }
                     seen_months.add(month)
 
-            # Construir resposta
+            # Build response
             city_data = {
                 "id": city_id,
                 "city_name": city_name,
@@ -287,7 +287,7 @@ class StationFinder:
             }
 
             logger.info(
-                f" Loaded {len(monthly_data)} months of historical data for {city_name}"
+                f"Loaded {len(monthly_data)} months of historical data for {city_name}"
             )
             return city_data
 
@@ -302,21 +302,21 @@ class StationFinder:
         period_key: Optional[str] = None,
     ) -> Optional[Dict[str, float]]:
         """
-        Busca normais climáticas mensais de uma cidade
+        Fetch monthly climate normals for a city
 
         Args:
-            city_id: ID da cidade
-            month: Mês (1-12)
-            period_key: Período específico (ex: "1991-2020"), usa último se None
+            city_id: City ID
+            month: Month (1-12)
+            period_key: Specific period (e.g., "1991-2020"), uses latest if None
 
         Returns:
-            Dict com normais ou None se não encontrado
+            Dict with normals or None if not found
         """
         if not self.db_session:
             return None
 
         try:
-            # Se período não especificado, usar o mais recente
+            # If period not specified, use most recent
             if period_key is None:
                 query = text(
                     """
@@ -377,19 +377,19 @@ class StationFinder:
         stations_data: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, float]:
         """
-        Calcula dados climáticos ponderados pela distância
+        Calculate distance-weighted climate data
 
-        Peso = 1 / (distância + 0.1)
-        Normaliza para que soma dos pesos = 1
+        Weight = 1 / (distance + 0.1)
+        Normalizes so sum of weights = 1
 
         Args:
             target_lat: Latitude
             target_lon: Longitude
-            radius_km: Raio de busca
-            stations_data: Lista de estações (se None, busca na DB)
+            radius_km: Search radius
+            stations_data: List of stations (if None, searches in DB)
 
         Returns:
-            Dict com dados ponderados
+            Dict with weighted data
         """
         if stations_data is None:
             stations_data = await self.find_stations_in_radius(
@@ -406,15 +406,15 @@ class StationFinder:
         for station in stations_data:
             distance_km = station.get("distance_km", float("inf"))
 
-            # Evitar divisão por zero
+            # Avoid division by zero
             if distance_km == 0:
                 distance_km = 0.001
 
-            # Peso inversamente proporcional à distância
+            # Weight inversely proportional to distance
             weight = 1.0 / (distance_km + 0.1)
             total_weight += weight
 
-            # Acumular dados ponderados
+            # Accumulate weighted data
             for key, value in station.items():
                 if isinstance(value, (int, float)) and key not in [
                     "distance_km",
@@ -428,7 +428,7 @@ class StationFinder:
                         weighted_data[key] = 0.0
                     weighted_data[key] += value * weight
 
-        # Normalizar pesos
+        # Normalize weights
         for key in weighted_data:
             weighted_data[key] /= total_weight
 
@@ -444,14 +444,14 @@ class StationFinder:
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """
-        Busca estações pré-calculadas próximas de uma cidade
+        Fetch pre-calculated nearby stations for a city
 
         Args:
-            city_id: ID da cidade estudada
-            limit: Máximo de estações
+            city_id: Studied city ID
+            limit: Maximum number of stations
 
         Returns:
-            Lista de estações com weights pré-calculados
+            List of stations with pre-calculated weights
         """
         if not self.db_session:
             return []
@@ -519,34 +519,28 @@ class StationFinder:
         max_distance_km: float = 10,
     ) -> Optional[Dict[str, Any]]:
         """
-        Wrapper síncrono para find_studied_city() - compatível com código síncrono.
+        Synchronous wrapper for find_studied_city() - compatible with synchronous code.
 
-        Usa asyncio.run() internamente para executar coroutine.
+        Uses asyncio.run() internally to execute coroutine.
 
         Args:
-            target_lat: Latitude do alvo
-            target_lon: Longitude do alvo
-            max_distance_km: Distância máxima para considerar "próxima"
+            target_lat: Target latitude
+            target_lon: Target longitude
+            max_distance_km: Maximum distance to consider "nearby"
 
         Returns:
-            Dict com dados da cidade e seus normais mensais, ou None
-
-        Example:
-            >>> finder = StationFinder(db_session)
-            >>> city = finder.find_studied_city_sync(-15.7939, -47.8828)
-            >>> if city:
-            ...     print(f"Encontrada: {city['city_name']} a {city['distance_km']:.1f}km")
+            Dict with city data and monthly normals, or None
         """
         import asyncio
 
         try:
-            # Tentar executar diretamente com asyncio.run
+            # Try to execute directly with asyncio.run
             return asyncio.run(
                 self.find_studied_city(target_lat, target_lon, max_distance_km)
             )
         except RuntimeError as e:
             if "already running" in str(e):
-                # Se já há event loop rodando, criar nova task
+                # If event loop already running, create new task
                 import concurrent.futures
 
                 with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -568,28 +562,23 @@ class StationFinder:
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """
-        Wrapper síncrono para find_stations_in_radius() - compatível com código síncrono.
+        Synchronous wrapper for find_stations_in_radius() - compatible with synchronous code.
 
-        Usa asyncio.run() internamente para executar coroutine.
+        Uses asyncio.run() internally to execute coroutine.
 
         Args:
-            target_lat: Latitude do alvo
-            target_lon: Longitude do alvo
-            radius_km: Raio de busca em km
-            limit: Máximo de estações
+            target_lat: Target latitude
+            target_lon: Target longitude
+            radius_km: Search radius in km
+            limit: Maximum number of stations
 
         Returns:
-            Lista de estações ordenadas por distância
-
-        Example:
-            >>> finder = StationFinder(db_session)
-            >>> stations = finder.find_stations_in_radius_sync(-15.7939, -47.8828, 50)
-            >>> print(f"Encontradas {len(stations)} estações")
+            List of stations ordered by distance
         """
         import asyncio
 
         try:
-            # Tentar executar diretamente com asyncio.run
+            # Try to execute directly with asyncio.run
             return asyncio.run(
                 self.find_stations_in_radius(
                     target_lat, target_lon, radius_km, limit
@@ -597,7 +586,7 @@ class StationFinder:
             )
         except RuntimeError as e:
             if "already running" in str(e):
-                # Se já há event loop rodando, criar nova task
+                # If event loop already running, create new task
                 import concurrent.futures
 
                 with concurrent.futures.ThreadPoolExecutor() as executor:

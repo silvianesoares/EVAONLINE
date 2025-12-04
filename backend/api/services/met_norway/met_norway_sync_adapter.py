@@ -1,23 +1,27 @@
 """
-Adapter síncrono para MET Norway 2.0.
+Synchronous adapter for MET Norway 2.0.
+GLOBAL with DAILY data and REGIONAL STRATEGY.
 
-GLOBAL com dados DIÁRIOS e ESTRATÉGIA REGIONAL.
+- Forecast API with GLOBAL coverage
+- Start: Today
+- End: Today + 5 days (EVAonline standard)
+- Total: 6 days of forecast
 
-Este adapter permite usar o cliente assíncrono MET Norway
-em código síncrono, facilitando a integração com data_download.py.
+This adapter allows using the asynchronous MET Norway client
+in synchronous code, facilitating integration with data_download.py.
 
-Características:
-GLOBAL (qualquer coordenada do mundo)
-Dados DIÁRIOS agregados de dados horários
-ESTRATÉGIA REGIONAL para qualidade otimizada:
+Features:
+GLOBAL (any coordinates worldwide)
+DAILY data aggregated from hourly data
+REGIONAL STRATEGY for optimized quality:
    - Nordic (NO/SE/FI/DK/Baltics): Temp + Humidity + Precipitation
      (1km MET Nordic, radar + crowdsourced bias correction)
    - Rest of World: Temp + Humidity only
      (9km ECMWF, skip precipitation - use Open-Meteo instead)
-Variáveis otimizadas para ETo FAO-56
-Sem limite de cobertura
+Variables optimized for ETo FAO-56
+No coverage limits
 
-Licença: CC-BY 4.0 - Exibir em todas as visualizações com dados MET Norway
+License: CC-BY 4.0 - Display in all visualizations with MET Norway data
 """
 
 import asyncio
@@ -26,7 +30,7 @@ from typing import Any
 
 from loguru import logger
 
-from backend.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.geographic_utils import GeographicUtils
 
 from .met_norway_client import (
     METNorwayDailyData,
@@ -37,8 +41,8 @@ from .met_norway_client import (
 
 class METNorwaySyncAdapter:
     """
-    Adapter síncrono para MET Norway.
-    Usar somente "MET Norway" para MET Norway.
+    Synchronous adapter for MET Norway.
+    Use only "MET Norway" when referring to MET Norway.
     """
 
     def __init__(
@@ -47,14 +51,12 @@ class METNorwaySyncAdapter:
         cache: Any | None = None,
     ):
         """
-        Inicializa adapter GLOBAL do MET Norway.
+        Initialize GLOBAL MET Norway adapter.
         """
         self.config = config or METNorwayConfig()
         self.cache = cache
-        self._client: METNorwayClient | None = (
-            None  # Pool simples para reutilização
-        )
-        logger.info("🌍 METNorwaySyncAdapter initialized (GLOBAL)")
+        self._client: METNorwayClient | None = None  # Simple pool for reuse
+        logger.info("METNorwaySyncAdapter initialized (GLOBAL)")
 
     async def _get_client(self) -> METNorwayClient:
         """Get or create client from pool."""
@@ -74,26 +76,19 @@ class METNorwaySyncAdapter:
         timezone: str | None = None,
     ) -> list[METNorwayDailyData]:
         """
-        Busca dados DIÁRIOS de forma SÍNCRONA (compatível com Celery/sync code).
+        Fetch DAILY data SYNCHRONOUSLY (compatible with Celery/sync code).
 
         Args:
-            lat: Latitude (-90 a 90)
-            lon: Longitude (-180 a 180)
-            start_date: Data inicial
-            end_date: Data final
-            altitude: Elevação em metros (opcional)
-            timezone: Fuso horário (opcional)
+            lat: Latitude (-90 to 90)
+            lon: Longitude (-180 to 180)
+            start_date: Start date
+            end_date: End date
+            altitude: Elevation in meters (optional)
+            timezone: Timezone (optional)
 
         Returns:
-            Lista de dados diários
+            List of daily data
 
-        Example:
-            >>> adapter = METNorwaySyncAdapter()
-            >>> data = adapter.get_daily_data_sync(
-            ...     lat=60.0, lon=10.0,
-            ...     start_date=datetime(2024, 1, 1),
-            ...     end_date=datetime(2024, 1, 7)
-            ... )
         """
         return asyncio.run(
             self._async_get_daily_data(
@@ -116,10 +111,10 @@ class METNorwaySyncAdapter:
         timezone: str | None = None,
     ) -> list[METNorwayDailyData]:
         """
-        Busca dados DIÁRIOS de forma ASSÍNCRONA (para FastAPI/Celery async tasks).
+        Fetch DAILY data ASYNCHRONOUSLY (for FastAPI/Celery async tasks).
 
-        Use este método em contextos assíncronos.
-        Para código síncrono, use get_daily_data_sync().
+        Use this method in asynchronous contexts.
+        For synchronous code, use get_daily_data_sync().
         """
         return await self._async_get_daily_data(
             lat=lat,
@@ -140,37 +135,37 @@ class METNorwaySyncAdapter:
         timezone: str | None = None,
     ) -> list[METNorwayDailyData]:
         """
-        Busca dados DIÁRIOS de forma assíncrona.
+        Fetch DAILY data asynchronously.
 
-        USO:
-            # Em Celery task (async def)
+        USAGE:
+            # In Celery task (async def)
             adapter = METNorwaySyncAdapter()
             data = await adapter.get_daily_data(...)
 
-            # Em código síncrono (se necessário)
+            # In synchronous code (if necessary)
             data = asyncio.run(adapter.get_daily_data(...))
         """
-        client = await self._get_client()  # Reutiliza client do pool
+        client = await self._get_client()  # Reuse client from pool
 
         try:
-            # Validações básicas - GeographicUtils (SINGLE SOURCE OF TRUTH)
+            # Basic validations - GeographicUtils (SINGLE SOURCE OF TRUTH)
             if not GeographicUtils.is_valid_coordinate(lat, lon):
                 msg = f"Coordenadas inválidas: ({lat}, {lon})"
                 raise ValueError(msg)
 
-            # Enforcement de 5 dias de previsão
+            # Enforce 5-day forecast limit
             delta_days = (end_date - start_date).days
             if delta_days > 5:
                 end_date = start_date + timedelta(days=5)
                 logger.bind(lat=lat, lon=lon).warning(
-                    f"Horizonte ajustado para 5 dias: {delta_days} -> 5"
+                    f"Forecast horizon adjusted to 5 days: {delta_days} -> 5"
                 )
 
-            # Log região detectada com get_region
+            # Log detected region with get_region
             # (4 tiers: usa/nordic/brazil/global)
             region = GeographicUtils.get_region(lat, lon)
 
-            # Labels regionais para logging
+            # Regional labels for logging
             region_labels = {
                 "nordic": "NORDIC (1km + radar)",
                 "usa": "USA (NOAA/NWS)",
@@ -179,20 +174,20 @@ class METNorwaySyncAdapter:
             }
             region_label = region_labels.get(region, "UNKNOWN")
 
-            # Log específico para Brasil
+            # Specific log for Brazil
             if region == "brazil":
                 logger.bind(lat=lat, lon=lon).debug(
-                    "Região BR: Usando validações Xavier et al. "
-                    "(Open-Meteo fallback para precip histórica)"
+                    "Brazil region: Using Xavier et al. validations "
+                    "(Open-Meteo fallback for historical precipitation)"
                 )
 
             logger.bind(lat=lat, lon=lon, region=region_label).info(
-                f"📡 Consultando MET Norway API: "
+                f"Querying MET Norway API: "
                 f"({lat}, {lon}, {altitude}m) - {region_label}"
             )
 
-            # Buscar dados DIÁRIOS (agregados de horários)
-            # Cliente automaticamente filtra variáveis por região
+            # Fetch DAILY data (aggregated from hourly)
+            # Client automatically filters variables by region
             daily_data = await client.get_daily_forecast(
                 lat=lat,
                 lon=lon,
@@ -205,38 +200,38 @@ class METNorwaySyncAdapter:
 
             if not daily_data:
                 logger.bind(lat=lat, lon=lon).warning(
-                    "⚠️  MET Norway retornou dados vazios"
+                    "MET Norway returned empty data"
                 )
                 return []
 
             logger.bind(lat=lat, lon=lon).info(
-                f"✅ MET Norway: {len(daily_data)} dias "
-                f"obtidos (de {start_date.date()} a {end_date.date()})"
+                f"MET Norway: {len(daily_data)} days "
+                f"retrieved (from {start_date.date()} to {end_date.date()})"
             )
 
             return daily_data
 
         except Exception as e:
             logger.bind(lat=lat, lon=lon).error(
-                f"❌ Erro ao buscar dados MET Norway: {e}"
+                f"Error fetching MET Norway data: {e}"
             )
             raise
 
     def health_check_sync(self) -> bool:
         """
-        Health check síncrono (testa com coordenada GLOBAL).
+        Synchronous health check (tests with GLOBAL coordinates).
 
         Returns:
-            bool: True se API está acessível
+            bool: True if API is accessible
         """
         return asyncio.run(self._async_health_check())
 
     async def _async_health_check(self) -> bool:
         """
-        Health check assíncrono interno.
+        Internal asynchronous health check.
 
-        Testa com coordenadas de Brasília (Brasil) para validar
-        que é realmente GLOBAL.
+        Tests with Brasilia (Brazil) coordinates to validate
+        that it is truly GLOBAL.
         """
         client = await self._get_client()
 
@@ -245,21 +240,21 @@ class METNorwaySyncAdapter:
             is_healthy = await client.health_check()
 
             if is_healthy:
-                logger.info("🏥 MET Norway health check: ✅ OK (GLOBAL)")
+                logger.info("MET Norway health check: OK (GLOBAL)")
             else:
-                logger.error("🏥 MET Norway health check: ❌ FAIL")
+                logger.error("MET Norway health check: FAIL")
 
             return is_healthy
 
         except Exception as e:
-            logger.error(f"🏥 MET Norway health check failed: {e}")
+            logger.error(f"MET Norway health check failed: {e}")
             return False
 
     def get_attribution(self) -> str:
         """
-        Retorna string de atribuição para visualizações (CC-BY 4.0).
+        Return attribution string for visualizations (CC-BY 4.0).
 
-        Use em plots Dash:
+        Use in Dash plots:
             fig.add_annotation(
                 text=adapter.get_attribution(),
                 xref="paper", yref="paper",
@@ -275,10 +270,10 @@ class METNorwaySyncAdapter:
 
     def get_coverage_info(self) -> dict:
         """
-        Retorna informações sobre cobertura GLOBAL com qualidade regional.
+        Return information about GLOBAL coverage with regional quality.
 
         Returns:
-            dict: Informações de cobertura com quality tiers
+            dict: Coverage information with quality tiers
         """
         return {
             "adapter": "METNorwaySyncAdapter",
@@ -293,7 +288,7 @@ class METNorwaySyncAdapter:
                 "nordic": {
                     "region": "Norway, Denmark, Sweden, Finland, Baltics",
                     "bbox": GeographicUtils.NORDIC_BBOX,
-                    # Usa constant de geographic_utils
+                    # Uses constant from geographic_utils
                     "resolution": "1 km",
                     "model": "MEPS 2.5km + MET Nordic downscaling",
                     "updates": "Hourly",
@@ -305,6 +300,7 @@ class METNorwaySyncAdapter:
                         "air_temperature_min",
                         "air_temperature_mean",
                         "relative_humidity_mean",
+                        "wind_speed_10m_mean",
                         "precipitation_sum",
                     ],
                     "precipitation_quality": (

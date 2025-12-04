@@ -12,14 +12,15 @@ EVAonline implements an **adaptive Kalman filter** to fuse ETo estimates from mu
 
 EVAonline integrates **6 climate data sources** through modular API clients:
 
-| Source | Type | Resolution | Coverage | Use Case |
-|--------|------|------------|----------|----------|
-| **NASA POWER** | Archive (MERRA-2) | 0.5° × 0.625° | Global, 1981-present | Historical ETo (validation) |
-| **Open-Meteo Archive** | Archive (ERA5-Land) | 0.1° × 0.1° | Global, 1940-present | Historical ETo (validation) |
-| **Open-Meteo Forecast** | Forecast (7-day) | 0.1° × 0.1° | Global | Short-term prediction |
-| **Met.no (Norway)** | Forecast (9-day) | High resolution | Norway/Nordic | Regional forecast |
-| **NWS Forecast** | Forecast (7-day) | Station-based | USA | Regional forecast (USA) |
-| **NWS Stations** | Observations | Station-based | USA | Real-time monitoring |
+| Data Source | Start Date | End Date | Update Frequency | Latency | Mode |
+|-------------|-----------|----------|-----------------|---------|----------|
+| **Xavier BR-DWGD** | 1991-01-01 | 2020-12-31 | Annual updates | - | Reference/validation only |
+| **NASA POWER** | 1990-01-01 | Today - 2 days | Daily | **2 days** | HISTORICAL_EMAIL + DASHBOARD_CURRENT |
+| **Open-Meteo Archive** | 1990-01-01 | Today - 2 days | Daily | **2 days** | HISTORICAL_EMAIL + DASHBOARD_CURRENT |
+| **Open-Meteo Forecast** | Today - 29 days | Today + 5 days | Daily | **0 days** (real-time) | DASHBOARD_CURRENT + DASHBOARD_FORECAST |
+| **Met Norway** | Today | Today + 5 days | Hourly | **0 days** | DASHBOARD_FORECAST |
+| **NWS Forecast** | Today | Today + 5 days | Hourly | **0 days** | DASHBOARD_FORECAST (USA) |
+| **NWS Stations** | Today - 2 days | Today | Hourly, Real-time | **0 days** | DASHBOARD_FORECAST (USA stations) |
 
 **Implementation**: `scripts/api/services/` directory with independent client modules
 
@@ -32,8 +33,8 @@ EVAonline integrates **6 climate data sources** through modular API clients:
    - Open-Meteo: Higher resolution, better precipitation detail
 
 2. **Long historical coverage**:
-   - NASA POWER: 1981-present (40+ years)
-   - Open-Meteo: 1940-present (80+ years)
+   - NASA POWER: 1990 to today-2d (30+ years, 2-day delay)
+   - Open-Meteo Archive: 1990 to today-2d (30+ years, 2-day delay)
    - Enables robust statistical validation
 
 3. **Complete FAO-56 variables**:
@@ -49,7 +50,7 @@ EVAonline integrates **6 climate data sources** through modular API clients:
    - Reproducible research
 
 **Forecast sources** (Open-Meteo Forecast, Met.no, NWS) are used for operational predictions but not included in validation because:
-- Short temporal window (7-10 days)
+- Short temporal window (5 days)
 - Insufficient data for statistical metrics (KGE, PBIAS, RMSE)
 - Focus on real-time applications, not historical validation
 

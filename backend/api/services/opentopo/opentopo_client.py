@@ -4,50 +4,46 @@ OpenTopoData Client - Elevation and Topographic Data.
 API: https://www.opentopodata.org/
 Public Instance: https://api.opentopodata.org/v1/
 
-Cobertura: Global (múltiplos datasets com fallback nativo)
+Coverage: Global (multiple datasets with native fallback)
 
 Multi-Dataset Fallback (Nov 2025):
-A API suporta fallback nativo: /v1/{dataset1},{dataset2}?locations=...
-Padrão: /v1/srtm30m,aster30m
-- Tenta SRTM30m primeiro (melhor qualidade, -60° a +60°)
-- Automáticamente cai para ASTER30m se sem dados
-- Cada ponto usa o melhor dataset disponível
-- Elimina necessidade de auto-switch manual
+The API supports native fallback: /v1/{dataset1},{dataset2}?locations=...
+Default: /v1/srtm30m,aster30m
+- Tries SRTM30m first (best quality, -60° to +60°)
+- Automatically falls back to ASTER30m if no data
+- Each point uses the best available dataset
+- Eliminates need for manual auto-switch
 
-Datasets Disponíveis:
-- srtm30m: SRTM 30m (~30m, melhor qualidade onde disponível)
-- aster30m: ASTER 30m (global, inclui regiões polares)
-- mapzen: ~30m global compilado (inclui batimetria)
-- etopo1: ETOPO1 (~1.8km, global com batimetria)
-- outros regionais: ned10m (USA), eudem25m (Europa), etc.
+Available Datasets:
+- srtm30m: SRTM 30m (~30m, best quality where available)
+- aster30m: ASTER 30m (global, includes polar regions)
+- mapzen: ~30m global compiled (includes bathymetry)
+- etopo1: ETOPO1 (~1.8km, global with bathymetry)
+- other regional: ned10m (USA), eudem25m (Europe), etc.
 
-Retorna:
-- elevation: Elevação em metros (pode ser null se sem dados)
-- location: Coordenadas originais (interpolação bilinear/cubic)
-- dataset: Dataset realmente usado (SRTM ou ASTER, por exemplo)
+Returns:
+- elevation: Elevation in meters (can be null if no data)
+- location: Original coordinates (bilinear/cubic interpolation)
+- dataset: Dataset actually used (SRTM or ASTER, for example)
 
-Rate Limit Atual (2025):
-- Máximo 1 request por segundo
-- Máximo 1000 requests por dia
-- Máximo 100 localizações por request
-- Recomendado uso de batch + cache agressivo (elevação não muda)
+Current Rate Limit (2025):
+- Maximum 1 request per second
+- Maximum 1000 requests per day
+- Maximum 100 locations per request
+- Recommended use of batch + aggressive cache (elevation doesn't change)
 
-Uso no Cálculo de ETo FAO-56:
-1. **Pressão Atmosférica** (P):
-   P = 101.3 × [(293 - 0.0065 × z) / 293]^5.26
-   onde z = elevação (m)
+Use in FAO-56 ETo Calculation:
+1. **Atmospheric Pressure** (P):
+   P = 101.3 x [(293 - 0.0065 x z) / 293]^5.26
+   where z = elevation (m)
 
-2. **Psychrometric Constant** (γ):
-   γ = 0.665 × 10^-3 × P
+2. **Psychrometric Constant** (Y):
+   Y = 0.665 x 10^-3 x P
 
-3. **Radiação Solar Extraterrestre** (Ra):
-   Aumenta ~10% por 1000m de altitude
+3. **Extraterrestrial Solar Radiation** (Ra):
+   Increases ~10% per 1000m altitude
 
-Licença: Pública (dados SRTM/ASTER são domínio público)
-
-Cache Strategy:
-- TTL: 30 dias (elevação não muda)
-- Key: f"opentopo:{lat:.6f}:{lon:.6f}" (dataset determinístico)
+License: Public (SRTM/ASTER data are public domain)
 """
 
 import os
@@ -57,37 +53,37 @@ import httpx
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from backend.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.geographic_utils import GeographicUtils
 
 
 class OpenTopoConfig(BaseModel):
-    """Configuração da API OpenTopoData."""
+    """OpenTopoData API configuration."""
 
     base_url: str = os.getenv(
         "OPENTOPO_URL",
         "https://api.opentopodata.org/v1",
     )
 
-    default_dataset: str = "srtm30m,aster30m"  # Multi-fallback nativo da API
+    default_dataset: str = "srtm30m,aster30m"  # Native API multi-fallback
 
     timeout: int = 15
     cache_ttl: int = 3600 * 24 * 30  # 30 dias
 
 
 class OpenTopoLocation(BaseModel):
-    """Dados de localização retornados pela OpenTopoData
-    (coordenadas ajustadas à grade)."""
+    """Location data returned by OpenTopoData
+    (grid-adjusted coordinates)."""
 
-    lat: float = Field(..., description="Latitude (ajustada)")
+    lat: float = Field(..., description="Latitude (adjusted)")
     lon: float = Field(
-        ..., description="Longitude (ajustada)"
-    )  # API usa "lng"
-    elevation: float = Field(..., description="Elevação em metros")
-    dataset: str = Field(..., description="Dataset utilizado")
+        ..., description="Longitude (adjusted)"
+    )  # API uses "lng"
+    elevation: float = Field(..., description="Elevation in meters")
+    dataset: str = Field(..., description="Dataset used")
 
 
 class OpenTopoClient:
-    """Client para serviço OpenTopoData de elevação."""
+    """Client for OpenTopoData elevation service."""
 
     def __init__(
         self,
@@ -109,8 +105,8 @@ class OpenTopoClient:
             follow_redirects=True,
         )
         logger.info(
-            f"OpenTopoClient inicializado | "
-            f"dataset padrão={self.config.default_dataset}"
+            f"OpenTopoClient initialized | "
+            f"default dataset={self.config.default_dataset}"
         )
 
     async def close(self):
@@ -124,11 +120,11 @@ class OpenTopoClient:
         dataset: str | None = None,
     ) -> OpenTopoLocation | None:
         """
-        Busca elevação para um ponto único (com fallback nativo da API).
+        Fetch elevation for a single point (with native API fallback).
 
-        Usa multi-dataset fallback nativo da OpenTopoData API:
+        Uses OpenTopoData API's native multi-dataset fallback:
         /v1/srtm30m,aster30m?locations=lat,lon
-        A API tenta SRTM30m primeiro, depois ASTER30m se necessário.
+        The API tries SRTM30m first, then ASTER30m if necessary.
 
         Args:
             lat: Latitude
@@ -139,14 +135,14 @@ class OpenTopoClient:
             OpenTopoLocation with elevation, or None if error
 
         Example:
-            >>> client = OpenTopoClient()
-            >>> location = await client.get_elevation(-15.7801, -47.9292)
-            >>> print(f"Elevation: {location.elevation}m")
+            > client = OpenTopoClient()
+            > location = await client.get_elevation(-15.7801, -47.9292)
+            > print(f"Elevation: {location.elevation}m")
             Elevation: 1172m
         """
-        # Validação básica de coordenadas
+        # Basic coordinate validation
         if not GeographicUtils.is_valid_coordinate(lat, lon):
-            logger.warning(f"Coordenadas inválidas: ({lat}, {lon})")
+            logger.warning(f"Invalid coordinates: ({lat}, {lon})")
             return None
 
         dataset = dataset or self.config.default_dataset
@@ -161,7 +157,7 @@ class OpenTopoClient:
                     logger.debug(f"Cache hit: {cache_key}")
                     return cached
             except Exception as e:
-                logger.warning(f"Erro leitura cache: {e}")
+                logger.warning(f"Cache read error: {e}")
 
         # Fetch from API
         try:
@@ -179,14 +175,14 @@ class OpenTopoClient:
 
             results = data.get("results", [])
             if not results:
-                logger.warning("Nenhum resultado retornado")
+                logger.warning("No results returned")
                 return None
 
             result = results[0]
             elevation = result.get("elevation")
 
             if elevation is None:
-                logger.info("Sem dados de elevação para este ponto")
+                logger.info("No elevation data for this point")
                 return None
 
             loc = result.get("location", {})
@@ -209,23 +205,23 @@ class OpenTopoClient:
                         ttl=self.config.cache_ttl,
                     )
                 except Exception as e:
-                    logger.warning(f"Erro escrita cache: {e}")
+                    logger.warning(f"Cache write error: {e}")
 
             logger.info(
-                f"Elevação obtida | ({lat_out:.4f}, {lon_out:.4f}) = "
+                f"Elevation obtained | ({lat_out:.4f}, {lon_out:.4f}) = "
                 f"{elevation:.1f}m | {dataset}"
             )
             return location
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
-                logger.error("Rate limit excedido")
+                logger.error("Rate limit exceeded")
             else:
                 logger.error(f"HTTP error {e.response.status_code}")
             return None
 
         except Exception as e:
-            logger.error(f"Erro inesperado: {e}")
+            logger.error(f"Unexpected error: {e}")
             return None
 
     async def get_elevations_batch(
@@ -234,10 +230,10 @@ class OpenTopoClient:
         dataset: str | None = None,
     ) -> list[OpenTopoLocation]:
         """
-        Busca múltiplos pontos em uma única request (máx 100).
+        Fetch multiple points in a single request (max 100).
 
-        Usa multi-dataset fallback nativo da OpenTopoData API.
-        Cada ponto usa melhor dataset (SRTM→ASTER conforme necessário).
+        Uses OpenTopoData API's native multi-dataset fallback.
+        Each point uses best dataset (SRTM→ASTER as needed).
 
         Args:
             locations: List of (lat, lon) tuples
@@ -247,33 +243,33 @@ class OpenTopoClient:
             List of OpenTopoLocation objects
 
         Example:
-            >>> locations = [
-            ...     (-15.7801, -47.9292),  # Brasília
-            ...     (-23.5505, -46.6333),  # São Paulo
-            ... ]
-            >>> results = await client.get_elevations_batch(locations)
-            >>> for loc in results:
-            ...     print(f"{loc.lat}, {loc.lon}: {loc.elevation}m")
+            > locations = [
+                 (-15.7801, -47.9292),  # Brasília
+                 (-23.5505, -46.6333),  # São Paulo
+             ]
+            > results = await client.get_elevations_batch(locations)
+            > for loc in results:
+                print(f"{loc.lat}, {loc.lon}: {loc.elevation}m")
         """
         if not locations:
             return []
 
-        # Validação básica
+        # Basic validation
         if any(
             not GeographicUtils.is_valid_coordinate(lat, lon)
             for lat, lon in locations
         ):
-            logger.warning("Batch contém coordenadas inválidas")
+            logger.warning("Batch contains invalid coordinates")
             return []
 
         dataset = dataset or self.config.default_dataset
 
         if len(locations) > 100:
-            # Split recursivo
+            # Recursive split
             results = []
             for i in range(0, len(locations), 100):
                 chunk = locations[i : i + 100]
-                # passa dataset já ajustado
+                # pass already adjusted dataset
                 chunk_results = await self.get_elevations_batch(
                     chunk, dataset=dataset
                 )
@@ -303,7 +299,7 @@ class OpenTopoClient:
             for i, result_dict in enumerate(results_data):
                 elevation = result_dict.get("elevation")
                 if elevation is None:
-                    continue  # pula pontos sem dados
+                    continue  # skip points without data
 
                 loc = result_dict.get("location", {})
                 lat_out = loc.get("lat", locations[i][0])
@@ -319,11 +315,11 @@ class OpenTopoClient:
                 )
 
             logger.info(
-                f"Batch obtido | {len(results)}/{len(locations)} pontos | "
+                f"Batch obtained | {len(results)}/{len(locations)} points | "
                 f"dataset={dataset}"
             )
             return results
 
         except Exception as e:
-            logger.error(f"Erro no batch: {e}")
+            logger.error(f"Batch error: {e}")
             return []

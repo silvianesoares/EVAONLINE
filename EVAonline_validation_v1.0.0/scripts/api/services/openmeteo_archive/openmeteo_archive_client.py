@@ -5,7 +5,9 @@ API: https://archive-api.open-meteo.com/v1/archive
 
 Coverage: Global
 
-Period: 1990-01-01 to (today - 2 days)
+- Archived Data
+- Start: 1990/01/01
+- End: Today - 2 days (EVAonline standard)
 
 Resolution: Daily
 
@@ -55,9 +57,9 @@ class OpenMeteoArchiveConfig:
     # are defined in climate_source_availability.py (SOURCE OF TRUTH).
     # This client ASSUMES pre-validated dates from climate_validation.py.
     # - MIN_DATE: 1990-01-01 (in climate_source_availability.py)
-    # - MAX_DATE: hoje - 2d (in climate_source_availability.py)
+    # - MAX_DATE: hoje - 2 (in climate_source_availability.py)
     MIN_DATE = datetime(1990, 1, 1)
-    MAX_DATE_OFFSET = 2  # hoje - 2d
+    MAX_DATE_OFFSET = 2  # hoje - 2
 
     # Cache TTL (historical data is stable)
     CACHE_TTL = 86400  # 24 hours (may have corrections)
@@ -132,7 +134,7 @@ class OpenMeteoArchiveClient:
 
         IMPORTANT: This client ASSUMES that:
         - Coordinates validated in climate_validation.py
-        - Period (1990-01-01 to today-2d) validated in
+        - Period (1990-01-01 to today-2 days) validated in
           climate_source_availability.py
         This client ONLY fetches data, without re-validating dates.
 

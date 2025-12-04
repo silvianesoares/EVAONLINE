@@ -196,12 +196,13 @@ EVAonline_validation_v1.0.0/
 
 | Source | Resolution | Period | Latency | Purpose |
 |--------|-----------|--------|---------|---------|
-| **Xavier BR-DWGD** | 0.1° (~10 km) | 1961-2024 | - | Reference ✅ |
-| **NASA POWER** | 0.5° × 0.625° (~55 km) | 1981-present | 5-7 days | Global reanalysis (validation) |
-| **Open-Meteo Archive** | 0.1° (~10 km) | 1940-present | 2-3 days | High-res reanalysis (validation) |
-| **Open-Meteo Forecast** | 0.1° (~10 km) | 16-day forecast | Real-time | Global forecast |
-| **Met Norway** | ~1 km | 9-day forecast | Real-time | Regional (Europe) |
-| **NWS USA** | Station/grid | 1-day forecast | Real-time | Regional (USA) |
+| **Xavier BR-DWGD** | 0.1° (~10 km) | 1991-2020 | - | Reference ✅ |
+| **NASA POWER** | 0.5° × 0.625° (~55 km) | 1990-present | 2 days | Global reanalysis (validation) |
+| **Open-Meteo Archive** | 0.1° (~10 km) | 1990-present | 2 days | High-res reanalysis (validation) |
+| **Open-Meteo Forecast** | 0.1° (~10 km) | today-29 days to today+5days | Real-time | Global forecast |
+| **Met Norway** | ~1 km | 5-day forecast | Real-time | Regional (Europe) |
+| **NWS USA Forecast** | Station/grid | today+5days | Real-time | Regional (USA) |
+| **NWS USA Stations** | Station/grid | today-2days to today | Real-time | Regional (USA) |
 | **EVAonline** | Multi-resolution | 1990-present | Real-time | Kalman fusion ⭐ |
 
 ### Key Technical Details

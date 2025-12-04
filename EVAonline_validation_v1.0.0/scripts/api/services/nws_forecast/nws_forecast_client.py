@@ -1,10 +1,13 @@
 """
 NWS Forecast Client - Hourly to Daily Aggregation.
-
 Client for NWS API (National Weather Service / NOAA) FORECAST ONLY.
 Separated from nws_stations_client.py (station/observation endpoints).
-
 License: US Government Public Domain - Free use.
+
+- Forecast Data
+- Start: Today
+- End: Today + 5 days (EVAonline standard)
+- Total: 6 days forecast
 
 IMPORTANT: This client uses ONLY FORECAST endpoints:
 - GET /points/{lat},{lon} -> grid metadata

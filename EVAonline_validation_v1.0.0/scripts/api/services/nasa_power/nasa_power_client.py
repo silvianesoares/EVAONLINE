@@ -4,6 +4,10 @@ Public Domain.
 POWER Daily API
 Return a daily data for a region on a 0.5 x 0.5 degree grid.
 
+- Archived Data
+- Start: 1990/01/01
+- End: Today (EVAonline standard)
+
 Data Source:
 -----------
 The data was obtained from the Prediction Of Worldwide Energy Resources
@@ -303,14 +307,14 @@ class NASAPowerClient:
         Returns:
             dict: Information about temporal coverage and limitations
         """
-        start_date = datetime(1981, 1, 1).date()
+        start_date = datetime(1990, 1, 1).date()
         today = datetime.now().date()
 
         return {
             "data_start_date": start_date,
             "max_historical_years": (today - start_date).days // 365,
             "delay_days": 7,  # Typical delay
-            "description": "Historical data from 1981, global coverage",
+            "description": "Historical data from 1990, global coverage",
             "coverage": "Global",
             "update_frequency": "Daily (with 2-7 day delay)",
         }

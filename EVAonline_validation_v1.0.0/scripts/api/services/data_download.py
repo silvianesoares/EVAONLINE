@@ -229,13 +229,13 @@ async def download_weather_data(
                     data_records.append(
                         {
                             "date": record.date,
-                            "T2M_MAX": record.T2M_MAX,
-                            "T2M_MIN": record.T2M_MIN,
-                            "T2M": record.T2M,
-                            "RH2M": record.RH2M,
-                            "WS2M": record.WS2M,
-                            "ALLSKY_SFC_SW_DWN": record.ALLSKY_SFC_SW_DWN,
-                            "PRECTOTCORR": record.PRECTOTCORR,
+                            "T2M_MAX": record.temp_max,
+                            "T2M_MIN": record.temp_min,
+                            "T2M": record.temp_mean,
+                            "RH2M": record.humidity,
+                            "WS2M": record.wind_speed,
+                            "ALLSKY_SFC_SW_DWN": record.solar_radiation,
+                            "PRECTOTCORR": record.precipitation,
                         }
                     )
 
@@ -468,7 +468,7 @@ async def download_weather_data(
                             "temp_min": record.temp_min,
                             "temp_mean": record.temp_mean,
                             "humidity_mean": record.humidity_mean,
-                            "wind_speed_2m_mean": record.wind_speed_2m_mean,
+                            "wind_speed_2m_mean": record.wind_speed_mean,
                             "precipitation_sum": record.precipitation_sum,
                         }
                     )
@@ -491,7 +491,6 @@ async def download_weather_data(
 
                 client = NWSStationsSyncAdapter()
                 # NWS Stations implementation would go here
-
 
         except Exception as e:
             logger.error(
@@ -560,7 +559,7 @@ async def download_weather_data(
 
         for var_name, percentage in perc_missing.items():
             if percentage > 25:
-                var_display = variable_names.get(var_name, var_name)
+                var_display = variable_names.get(str(var_name), str(var_name))
                 warnings_list.append(
                     f"{source}: {var_display} has {percentage:.1f}% missing data"
                 )

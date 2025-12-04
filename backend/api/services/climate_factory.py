@@ -57,7 +57,7 @@ class ClimateClientFactory:
         Cria cliente NASA POWER com cache Redis.
 
         Returns:
-            Cliente para dados históricos globais (1990–hoje)
+            Cliente para dados históricos globais (start=1990/01/01; end=today-2d)
         """
         from .nasa_power.nasa_power_client import NASAPowerClient
 
@@ -118,7 +118,7 @@ class ClimateClientFactory:
             cache_dir: Diretório para cache em disco
 
         Returns:
-            Cliente para dados recentes + previsão (-30d a +5d)
+            Cliente para dados recentes + previsão (start=-29d a +5d)
         """
         from .openmeteo_forecast.openmeteo_forecast_client import (
             OpenMeteoForecastClient,

@@ -1,8 +1,12 @@
 """
-Cliente para API NASA POWER.
-Domínio Público.
+Client for NASA POWER API.
+Public Domain.
 POWER Daily API
 Return a daily data for a region on a 0.5 x 0.5 degree grid.
+
+- Archived Data
+- Start: 1990/01/01
+- End: Today (EVAonline standard)
 
 Data Source:
 -----------
@@ -24,11 +28,11 @@ funded through the NASA Earth Science Directorate Applied Science Program."
 
 Contact: larc-power-project@mail.nasa.gov
 
-IMPORTANTE:
-- Community 'ag' (agronomy): Radiação solar em MJ/m²/day (pronta para ETo)
-- Sempre usar community='ag' para dados agroclimáticos
+IMPORTANT:
+- Community 'ag' (agronomy): Solar radiation in MJ/m²/day (ready for ETo)
+- Always use community='ag' for agroclimatic data
 
-7 VARIÁVEIS DIÁRIAS DISPONÍVEIS:
+7 DAILY VARIABLES AVAILABLE:
 1. ALLSKY_SFC_SW_DWN: CERES SYN1deg All Sky Surface Shortwave
    Downward Irradiance (MJ/m^2/day)
 Spatial Resolution: 1 x 1 Degrees
@@ -60,11 +64,11 @@ import httpx
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from backend.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.geographic_utils import GeographicUtils
 
 
 class NASAPowerConfig(BaseModel):
-    """Configuração da API NASA POWER."""
+    """NASA POWER API configuration."""
 
     base_url: str = "https://power.larc.nasa.gov/api/temporal/daily/point"
     timeout: int = 30
@@ -73,45 +77,43 @@ class NASAPowerConfig(BaseModel):
 
 
 class NASAPowerData(BaseModel):
-    """Dados retornados pela NASA POWER."""
+    """Data returned by NASA POWER."""
 
-    date: str = Field(..., description="Data ISO 8601")
-    temp_max: float | None = Field(None, description="Temp máxima (°C)")
-    temp_min: float | None = Field(None, description="Temp mínima (°C)")
-    temp_mean: float | None = Field(None, description="Temp média (°C)")
-    humidity: float | None = Field(None, description="Umidade relativa (%)")
-    wind_speed: float | None = Field(
-        None, description="Velocidade vento (m/s)"
-    )
+    date: str = Field(..., description="Date ISO 8601")
+    temp_max: float | None = Field(None, description="Max temperature (°C)")
+    temp_min: float | None = Field(None, description="Min temperature (°C)")
+    temp_mean: float | None = Field(None, description="Mean temperature (°C)")
+    humidity: float | None = Field(None, description="Relative humidity (%)")
+    wind_speed: float | None = Field(None, description="Wind speed (m/s)")
     solar_radiation: float | None = Field(
-        None, description="Radiação solar (MJ/m²/day)"
+        None, description="Solar radiation (MJ/m²/day)"
     )
     precipitation: float | None = Field(
-        None, description="Precipitação (mm/dia)"
+        None, description="Precipitation (mm/day)"
     )
 
 
 class NASAPowerClient:
     """
-    Cliente para API NASA POWER com cache inteligente.
+    Client for NASA POWER API with intelligent caching.
     """
 
     def __init__(
         self, config: NASAPowerConfig | None = None, cache: Any | None = None
     ):
         """
-        Inicializa cliente NASA POWER.
+        Initialize NASA POWER client.
 
         Args:
-            config: Configuração customizada (opcional)
-            cache: ClimateCacheService (opcional, injetado via DI)
+            config: Custom configuration (optional)
+            cache: ClimateCacheService (optional, injected via DI)
         """
         self.config = config or NASAPowerConfig()
         self.client = httpx.AsyncClient(timeout=self.config.timeout)
-        self.cache = cache  # Cache service opcional
+        self.cache = cache  # Optional cache service
 
     async def close(self):
-        """Fecha conexão HTTP."""
+        """Close HTTP connection."""
         await self.client.aclose()
 
     async def get_daily_data(
@@ -123,38 +125,38 @@ class NASAPowerClient:
         community: str = "AG",  # UPPERCASE: AG, RE, SB
     ) -> list[NASAPowerData]:
         """
-        Busca dados climáticos diários para um ponto com cache inteligente.
+        Fetch daily climate data for a point with intelligent caching.
 
-        NOTA: Validações de range devem ser feitas em climate_validation.py
-        antes de chamar este método. Este cliente assume dados já validados.
+        NOTE: Range validations must be done in climate_validation.py
+        before calling this method. This client assumes pre-validated data.
 
         Args:
             lat: Latitude (-90 to 90)
             lon: Longitude (-180 to 180)
-            start_date: Data inicial (datetime) - DEVE estar validada
-            end_date: Data final (datetime) - DEVE estar validada
+            start_date: Start date (datetime) - MUST be validated
+            end_date: End date (datetime) - MUST be validated
             community: NASA POWER community (UPPERCASE required):
-                - AG: Agronomy (agronomia - padrão)
-                - RE: Renewable Energy (energia renovável)
-                - SB: Sustainable Buildings (edifícios sustentáveis)
+                - AG: Agronomy (default)
+                - RE: Renewable Energy
+                - SB: Sustainable Buildings
 
         Returns:
-            Lista de NASAPowerData com dados climáticos diários
+            List of NASAPowerData with daily climate data
         """
-        # Validações básicas - usar GeographicUtils (SINGLE SOURCE OF TRUTH)
+        # Basic validations - use GeographicUtils (SINGLE SOURCE OF TRUTH)
         if not GeographicUtils.is_valid_coordinate(lat, lon):
-            msg = f"Coordenadas inválidas: ({lat}, {lon})"
+            msg = f"Invalid coordinates: ({lat}, {lon})"
             raise ValueError(msg)
 
         if start_date > end_date:
-            msg = "start_date deve ser <= end_date"
+            msg = "start_date must be <= end_date"
             raise ValueError(msg)
 
-        # IMPORTANTE: Validações de range (7-30 dias) devem ser feitas
-        # em climate_validation.py ANTES de chamar este método.
-        # Este cliente assume dados pré-validados por climate_validation.
+        # IMPORTANT: Range validations (7-30 days) must be done
+        # in climate_validation.py BEFORE calling this method.
+        # This client assumes data pre-validated by climate_validation.
 
-        # 1. Tenta buscar do cache (se disponível)
+        # 1. Try to fetch from cache (if available)
         if self.cache:
             cached_data = await self.cache.get(
                 source="nasa_power",
@@ -164,27 +166,27 @@ class NASAPowerClient:
                 end=end_date,
             )
             if cached_data:
-                logger.info(f"🎯 Cache HIT: NASA POWER lat={lat}, lon={lon}")
+                logger.info(f"Cache HIT: NASA POWER lat={lat}, lon={lon}")
                 return cached_data
 
-        # 2. Cache MISS - busca da API
-        logger.info(f"Buscando NASA API: lat={lat}, lon={lon}")
+        # 2. Cache MISS - fetch from API
+        logger.info(f"Fetching NASA API: lat={lat}, lon={lon}")
 
-        # Formatar datas (YYYYMMDD)
+        # Format dates (YYYYMMDD)
         start_str = start_date.strftime("%Y%m%d")
         end_str = end_date.strftime("%Y%m%d")
 
-        # Parâmetros de requisição
+        # Request parameters
         params = {
             "parameters": ",".join(
                 [
-                    "T2M_MAX",  # Temp máxima 2m (°C)
-                    "T2M_MIN",  # Temp mínima 2m (°C)
-                    "T2M",  # Temp média 2m (°C)
-                    "RH2M",  # Umidade relativa 2m (%)
-                    "WS2M",  # Velocidade vento 2m (m/s)
-                    "ALLSKY_SFC_SW_DWN",  # Radiação solar (MJ/m²/day)
-                    "PRECTOTCORR",  # Precipitação (mm/dia)
+                    "T2M_MAX",  # Max temp 2m (°C)
+                    "T2M_MIN",  # Min temp 2m (°C)
+                    "T2M",  # Mean temp 2m (°C)
+                    "RH2M",  # Relative humidity 2m (%)
+                    "WS2M",  # Wind speed 2m (m/s)
+                    "ALLSKY_SFC_SW_DWN",  # Solar radiation (MJ/m²/day)
+                    "PRECTOTCORR",  # Precipitation (mm/day)
                 ]
             ),
             "community": community,
@@ -195,7 +197,7 @@ class NASAPowerClient:
             "format": "JSON",
         }
 
-        # Requisição com retry
+        # Request with retry
         for attempt in range(self.config.retry_attempts):
             try:
                 logger.info(
@@ -211,7 +213,7 @@ class NASAPowerClient:
                 data = response.json()
                 parsed_data = self._parse_response(data)
 
-                # 3. Salva no cache (se disponível)
+                # 3. Save to cache (if available)
                 if self.cache and parsed_data:
                     await self.cache.set(
                         source="nasa_power",
@@ -233,32 +235,32 @@ class NASAPowerClient:
                     raise
                 await self._delay_retry()
 
-        msg = "NASA POWER: Todos os attempts falharam"
+        msg = "NASA POWER: All attempts failed"
         raise httpx.HTTPError(msg)
 
     def _parse_response(self, data: dict) -> list[NASAPowerData]:
         """
-        Parseia resposta JSON da NASA POWER.
+        Parse NASA POWER JSON response.
 
         Args:
-            data: Resposta JSON
+            data: JSON response
 
         Returns:
-            List[NASAPowerData]: Dados parseados
+            List[NASAPowerData]: Parsed data
         """
         if "properties" not in data or "parameter" not in data["properties"]:
-            msg = "Resposta NASA POWER inválida (falta 'parameter')"
+            msg = "Invalid NASA POWER response (missing 'parameter')"
             raise ValueError(msg)
 
         parameters = data["properties"]["parameter"]
 
-        # Extrair datas (primeira chave de qualquer parâmetro)
+        # Extract dates (first key from any parameter)
         first_param = next(iter(parameters.values()))
         dates = sorted(first_param.keys())
 
         results = []
         for date_str in dates:
-            # Radiação já vem em MJ/m²/day com community=ag
+            # Radiation already comes in MJ/m²/day with community=ag
             solar_mj = parameters.get("ALLSKY_SFC_SW_DWN", {}).get(date_str)
 
             record = NASAPowerData(
@@ -273,18 +275,18 @@ class NASAPowerClient:
             )
             results.append(record)
 
-        logger.info(f"NASA POWER: Parseados {len(results)} registros")
+        logger.info(f"NASA POWER: Parsed {len(results)} records")
         return results
 
     def _format_date(self, date_str: str) -> str:
         """
-        Converte data YYYYMMDD → ISO 8601 (YYYY-MM-DD).
+        Convert date YYYYMMDD → ISO 8601 (YYYY-MM-DD).
 
         Args:
-            date_str: Data no formato YYYYMMDD
+            date_str: Date in YYYYMMDD format
 
         Returns:
-            str: Data ISO 8601
+            str: ISO 8601 date
         """
         year = date_str[:4]
         month = date_str[4:6]
@@ -292,7 +294,7 @@ class NASAPowerClient:
         return f"{year}-{month}-{day}"
 
     async def _delay_retry(self):
-        """Delay entre tentativas de retry."""
+        """Delay between retry attempts."""
         import asyncio
 
         await asyncio.sleep(self.config.retry_delay)
@@ -300,32 +302,32 @@ class NASAPowerClient:
     @classmethod
     def get_data_availability_info(cls) -> dict[str, Any]:
         """
-        Retorna informações sobre disponibilidade de dados históricos.
+        Return information about historical data availability.
 
         Returns:
-            dict: Informações sobre cobertura temporal e limitações
+            dict: Information about temporal coverage and limitations
         """
-        start_date = datetime(1981, 1, 1).date()
+        start_date = datetime(1990, 1, 1).date()
         today = datetime.now().date()
 
         return {
             "data_start_date": start_date,
             "max_historical_years": (today - start_date).days // 365,
             "delay_days": 7,  # Typical delay
-            "description": "Historical data from 1981, global coverage",
+            "description": "Historical data from 1990, global coverage",
             "coverage": "Global",
             "update_frequency": "Daily (with 2-7 day delay)",
         }
 
     async def health_check(self) -> bool:
         """
-        Verifica se API está acessível.
+        Check if API is accessible.
 
         Returns:
-            bool: True se API responde
+            bool: True if API responds
         """
         try:
-            # Tenta buscar 7 dias (mínimo) para um ponto qualquer
+            # Try to fetch 7 days (minimum) for any point
             end_date = datetime.now() - timedelta(days=7)
             start_date = end_date - timedelta(days=6)  # 7 days total
             await self.get_daily_data(

@@ -7,6 +7,11 @@ uses Celery (synchronous).
 
 Pattern followed: NASAPowerSyncAdapter
 
+- Station Search: Nearest active station with recent valid observation
+- Start: Today - 2 days
+- End: Today (EVAonline standard)
+- Total: 3 days forecast
+
 Features:
 - Conversion of hourly NWS data to daily aggregations (pandas)
 - Monitoring of known issues (delays, nulls, rounding)
@@ -216,9 +221,9 @@ class NWSStationsSyncAdapter:
                 f"active: {'YES' if station.is_active else 'NO (fallback)'}"
             )
 
-            # 3. Calculate and validate date range (NWS 7-day limit)
+            # 3. Calculate and validate date range (NWS 3-day limit)
             today_utc = datetime.utcnow().date()
-            max_start = today_utc - timedelta(days=6)  # 7 days including today
+            max_start = today_utc - timedelta(days=2)  # 3 days including today
 
             requested_start = start_date.date()
             if requested_start < max_start:
@@ -234,7 +239,7 @@ class NWSStationsSyncAdapter:
                     start_date = start_date.replace(tzinfo=timezone.utc)
 
             days_back = (end_date.date() - start_date.date()).days + 1
-            days_back = min(days_back, 7)  # Enforce API limit
+            days_back = min(days_back, 3)  # Enforce API limit
 
             # 4. Fetch station observations
             observations = await client.get_observations(

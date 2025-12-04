@@ -11,9 +11,9 @@ This folder contains detailed technical documentation for the EVAonline validati
 #### 1. [Data Sources Specifications](data_sources_specifications.md)
 **What**: Detailed technical specifications for all climate data sources  
 **Includes**:
-- **Xavier BR-DWGD** (Brazilian reference dataset, 1961-2024)
-- **NASA POWER** (MERRA-2 global reanalysis, 1981-present)
-- **Open-Meteo Archive** (ERA5-Land high-resolution, 1940-present)
+- **Xavier BR-DWGD** (Brazilian reference dataset, 1991-2020 validation period)
+- **NASA POWER** (MERRA-2 global reanalysis, 1990 to today-2d)
+- **Open-Meteo Archive** (ERA5-Land high-resolution, 1990 to today-2d)
 - **Open-Meteo Forecast** (7-day forecast, gap filling)
 - Technical details: spatial resolution, temporal coverage, methodology
 - API endpoints, variables, resolutions, coverage periods
@@ -73,7 +73,7 @@ This folder contains detailed technical documentation for the EVAonline validati
 #### 5. [API Operational Details](api_operational_details.md)
 **What**: Practical guidelines for using NASA POWER and Open-Meteo APIs  
 **Includes**:
-- Temporal coverage and latency (NASA: 0 days, Open-Meteo Archive: 2 days, Xavier: 6-12 months)
+- Temporal coverage and latency (NASA: 0 days, Open-Meteo Archive: 2 days)
 - **Multi-API gap filling strategy** (handling Open-Meteo 2-day delay)
 - Three operational scenarios: Real-time Dashboard, Historical Analysis, Forecast
 - Rate limits and caching best practices

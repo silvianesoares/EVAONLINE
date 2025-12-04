@@ -2,6 +2,11 @@
 MET Norway Locationforecast 2.0 Client with hourly-to-daily aggregation.
 Use only "MET Norway" when referring to MET Norway LocationForecast 2.0.
 
+- Forecast API with GLOBAL coverage
+- Start: Today
+- End: Today + 5 days (EVAonline standard)
+- Total: 6 days of forecast
+
 Documentation:
 - https://api.met.no/weatherapi/locationforecast/2.0/documentation
 - https://docs.api.met.no/doc/locationforecast/datamodel.html
@@ -11,7 +16,6 @@ IMPORTANT:
 - Locationforecast is GLOBAL (works anywhere)
 - Returns HOURLY data that must be aggregated to daily
 - No separate daily endpoint - aggregation done in backend
-- 5-day forecast limit (EVAonline standard)
 
 License: CC-BY 4.0 - Attribution required in all visualizations
 
@@ -194,6 +198,7 @@ class METNorwayClient:
         "air_temperature_mean",
         "precipitation_sum",  # High quality: radar + crowdsourced
         "relative_humidity_mean",
+        "wind_speed_10m_mean",
     ]
 
     # Variables for rest of world (basic ECMWF, skip precipitation)
@@ -321,7 +326,7 @@ class METNorwayClient:
         self,
         lat: float,
         lon: float,
-        altitude: float | None = None,  # [MELHORIA] Novo param opcional da doc
+        altitude: float | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         timezone: str | None = None,
@@ -351,7 +356,7 @@ class METNorwayClient:
             altitude: Altitude in meters (optional; uses topographic
                      model as fallback)
             start_date: Start date (default: today)
-            end_date: End date (default: start + 5 days)
+            end_date: End date (default: today + 5 days)
             timezone: Timezone name (e.g., 'America/Sao_Paulo')
             variables: List of variables to fetch (default: all for ETo)
 
@@ -370,24 +375,21 @@ class METNorwayClient:
 
         # Default dates
         if not start_date:
-            start_date = datetime.now()
+            start_date = datetime.now()  # Current date/time
         if not end_date:
-            end_date = start_date + timedelta(
-                days=5
-            )  # EVAonline standard: 5-day forecast
+            end_date = start_date + timedelta(days=5)
 
         if start_date > end_date:
             msg = "start_date must be <= end_date"
             raise ValueError(msg)
 
-        # ENFORCE: Limite de 5 dias (EVAonline standard)
         delta_days = (end_date - start_date).days
         if delta_days > 5:
             original_end = end_date
             end_date = start_date + timedelta(days=5)
             logger.warning(
                 f"Forecast limitado a 5 dias: "
-                f"{delta_days} dias solicitados → ajustado para 5 dias "
+                f"{delta_days} dias solicitados -> ajustado para 5 dias "
                 f"(era: {original_end.date()}, agora: {end_date.date()})"
             )
 
@@ -819,7 +821,7 @@ class METNorwayClient:
         return {
             "data_start_date": None,  # Forecast only
             "max_historical_years": 0,
-            "forecast_horizon_days": 9,  # Updated to 9 days
+            "forecast_horizon_days": 5,  # Updated to 5 days
             "description": "Forecast data only, global coverage",
             "coverage": "Global",
             "update_frequency": "Every 6 hours",

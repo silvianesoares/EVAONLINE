@@ -5,10 +5,13 @@ Converts asynchronous calls from OpenMeteoForecastClient to synchronous methods
 for compatibility with Celery tasks and legacy scripts.
 
 API: https://api.open-meteo.com/v1/forecast
+
 Coverage: Global
-Period: (today - 25 days) to (today + 5 days) = 30 days total
-Resolution: Daily (aggregated from hourly data)
-License: CC BY 4.0 (attribution required)
+
+- Forecast Data
+- Start: Today - 29 days
+- End: Today + 5 days (EVAonline standard)
+- Total: 35 days
 
 Variables (10):
 - Temperature: max, mean, min (°C)
@@ -52,7 +55,7 @@ class OpenMeteoForecastSyncAdapter:
             cache_dir: Directory for fallback cache (TTL: 6 hours)
 
         Features:
-            - Recent data: today - 25 days
+            - Recent data: today - 29 days
             - Forecast data: today + 5 days (standardized)
             - Best match model: Selects best available model
             - 10 climate variables with standardized units
@@ -64,7 +67,7 @@ class OpenMeteoForecastSyncAdapter:
         cache_type = "Redis" if cache else "Local"
         logger.info(
             f"OpenMeteoForecastSyncAdapter initialized ({cache_type} cache, "
-            f"-25d to +5d = 30d total)"
+            f"-29d to +5d = 35d total)"
         )
 
     def get_daily_data_sync(
@@ -92,15 +95,15 @@ class OpenMeteoForecastSyncAdapter:
         if isinstance(end_date, str):
             end_date = datetime.fromisoformat(end_date)
 
-        # Validation - Forecast API: -25d to +5d (30 days total)
+        # Validation - Forecast API: -29d to +5d (35 days total)
         today = datetime.now().date()
-        min_date = today - timedelta(days=25)
+        min_date = today - timedelta(days=29)
         max_date = today + timedelta(days=5)
 
         if start_date.date() < min_date:
             logger.warning(
                 f"Forecast: adjusting start_date to {min_date} "
-                f"(limit: today - 25 days)"
+                f"(limit: today - 29 days)"
             )
             start_date = datetime.combine(min_date, datetime.min.time())
 
@@ -147,7 +150,7 @@ class OpenMeteoForecastSyncAdapter:
         """
         Internal async implementation.
 
-        Uses best_match model, past_days=25, and wind_speed_unit=ms.
+        Uses best_match model, past_days=29, and wind_speed_unit=ms.
         """
         try:
             client = OpenMeteoForecastClient(

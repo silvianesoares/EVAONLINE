@@ -810,14 +810,6 @@ class METNorwayAggregationUtils:
 
         Returns:
             Dict mapping date -> raw aggregated data
-
-        Example:
-            >>> daily_raw = METNorwayAggregationUtils
-            ...     .aggregate_hourly_to_daily(
-            ...         timeseries, start_date, end_date
-            ...     )
-            >>> print(daily_raw.keys())
-            dict_keys([datetime.date(2024, 1, 15), ...])
         """
         from .geographic_utils import TimezoneUtils
 

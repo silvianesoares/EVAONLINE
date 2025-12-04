@@ -72,17 +72,17 @@ Each module has ONE reason to change:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    PRESENTATION LAYER                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  Dash App    │  │  FastAPI     │  │  WebSocket   │      │
-│  │  (Frontend)  │  │  (REST API)  │  │  (Real-time) │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                    PRESENTATION LAYER                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │  Dash App    │  │  FastAPI     │  │  WebSocket   │       │
+│  │  (Frontend)  │  │  (REST API)  │  │  (Real-time) │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   APPLICATION LAYER                          │
+│                   APPLICATION LAYER                         │
 │  ┌──────────────────────────────────────────────────┐       │
-│  │         Use Cases / Application Services          │       │
+│  │         Use Cases / Application Services         │       │
 │  │  - CalculateEToUseCase                           │       │
 │  │  - HistoricalDataExportUseCase                   │       │
 │  │  - ForecastEToUseCase                            │       │
@@ -90,12 +90,12 @@ Each module has ONE reason to change:
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                     DOMAIN LAYER                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Entities   │  │ Value Objects│  │   Services   │      │
-│  │ - ETo        │  │ - Temperature│  │ - EToEngine  │      │
-│  │ - Climate    │  │ - Location   │  │ - Kalman     │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                     DOMAIN LAYER                            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │   Entities   │  │ Value Objects│  │   Services   │       │
+│  │ - ETo        │  │ - Temperature│  │ - EToEngine  │       │
+│  │ - Climate    │  │ - Location   │  │ - Kalman     │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
 │  ┌────────────────────────────────────────────────┐         │
 │  │           Domain Ports (Interfaces)            │         │
 │  │  - ClimateDataPort                             │         │
@@ -105,18 +105,18 @@ Each module has ONE reason to change:
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                  INFRASTRUCTURE LAYER                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ Adapters     │  │  Databases   │  │    Cache     │      │
-│  │ - NASA       │  │ - PostgreSQL │  │ - Redis      │      │
-│  │ - OpenMeteo  │  │ - PostGIS    │  │ - TTL        │      │
-│  │ - MET Norway │  │              │  │              │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Celery     │  │  Monitoring  │  │  External    │      │
-│  │ - Tasks      │  │ - Prometheus │  │ - OpenTopo   │      │
-│  │ - Queue      │  │ - Grafana    │  │ - APIs       │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                  INFRASTRUCTURE LAYER                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │ Adapters     │  │  Databases   │  │    Cache     │       │
+│  │ - NASA       │  │ - PostgreSQL │  │ - Redis      │       │
+│  │ - OpenMeteo  │  │ - PostGIS    │  │ - TTL        │       │
+│  │ - MET Norway │  │              │  │              │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │   Celery     │  │  Monitoring  │  │  External    │       │
+│  │ - Tasks      │  │ - Prometheus │  │ - OpenTopo   │       │
+│  │ - Queue      │  │ - Grafana    │  │ - APIs       │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -201,8 +201,8 @@ User Request: {"start": "2023-01-01", "end": "2023-03-31", "email": "user@exampl
 ### Climate APIs
 - **NASA POWER**: MERRA-2, 0.5° × 0.625°, history since 1990
 - **Open-Meteo Archive**: ERA5-Land, 0.1° × 0.1°, history since 1990
-- **Open-Meteo Forecast**: ICON/GFS, 7-16 day forecast
-- **MET Norway**: ECMWF, 10 day forecast, higher accuracy for Europe
+- **Open-Meteo Forecast**: ICON/GFS, 5 days forecast
+- **MET Norway**: ECMWF, 5 days forecast, higher accuracy for Europe
 
 ### Elevation Services
 - **OpenTopoData**: SRTM 30m, ASTER 30m

@@ -8,12 +8,15 @@ This document describes operational considerations for using NASA POWER and Open
 
 ## Temporal Coverage Summary
 
-| Data Source | Start Date | End Date | Update Frequency | Latency | Use Case |
+| Data Source | Start Date | End Date | Update Frequency | Latency | Mode |
 |-------------|-----------|----------|-----------------|---------|----------|
-| **Xavier BR-DWGD** | 1961-01-01 | 2024-12-31* | Annual updates | 6-12 months | Reference/validation only |
-| **NASA POWER** | 1981-01-01 | Present | Daily | **0 days** (real-time) | Historical + Real-time |
-| **Open-Meteo Archive** | 1950-01-01 | Today - 2 days | Daily | **2 days** (QC period) | Historical data |
-| **Open-Meteo Forecast** | Today - 30 days | Today + 5 days | Hourly | **0 days** (real-time) | Recent + Forecast + Gap fill |
+| **Xavier BR-DWGD** | 1991-01-01 | 2020-12-31 | Annual updates | - | Reference/validation only |
+| **NASA POWER** | 1990-01-01 | Today - 2 days | Daily | **2 days** | HISTORICAL_EMAIL + DASHBOARD_CURRENT |
+| **Open-Meteo Archive** | 1990-01-01 | Today - 2 days | Daily | **2 days** | HISTORICAL_EMAIL + DASHBOARD_CURRENT |
+| **Open-Meteo Forecast** | Today - 29 days | Today + 5 days | Daily | **0 days** (real-time) | DASHBOARD_CURRENT + DASHBOARD_FORECAST |
+| **Met Norway** | Today | Today + 5 days | Hourly | **0 days** | DASHBOARD_FORECAST |
+| **NWS Forecast** | Today | Today + 5 days | Hourly | **0 days** | DASHBOARD_FORECAST (USA) |
+| **NWS Stations** | Today - 2 days | Today | Hourly, Real-time | **0 days** | DASHBOARD_FORECAST (USA stations) |
 
 **\*** Xavier dataset extended to 2024 but official publication covers 1961-2020
 
@@ -28,20 +31,20 @@ This document describes operational considerations for using NASA POWER and Open
 **Solution**: Multi-API strategy
 
 | API | Coverage | Purpose |
-|-----|----------|---------|
-| **NASA POWER** | Oct 16 → Nov 14 (30 days) | Primary source - complete coverage ✅ |
+|-----|----------|------|
+| **NASA POWER** | Oct 16 → Nov 12 (28 days) | Historical data (up to 2 days ago, 2-day delay) |
 | **Open-Meteo Archive** | Oct 16 → Nov 12 (28 days) | Historical data (up to 2 days ago) |
-| **Open-Meteo Forecast** | Nov 13 → Nov 14 (2 days) | **Fills Archive gap** ✅ |
+| **Open-Meteo Forecast** | Nov 13 → Nov 14 (2 days) | **Fills gap for both NASA and Archive** ✅ |
 
 **Timeline Visualization** (example: Nov 14, 2025, 30-day dashboard):
 
 ```
 Timeline for 30-day Dashboard (Nov 14, 2025)
 ┌────────────────────────────────────────┬─────────┬─────────┐
-│    NASA POWER (complete coverage)      │         │         │
-│ Oct 16 ───────────────────────────► Nov 14       │         │
+│    NASA POWER (2-day delay)            │   GAP   │   GAP   │
+│ Oct 16 ──────────────────────► Nov 12  │ Nov 13  │ Nov 14  │
 └────────────────────────────────────────┴─────────┴─────────┘
-✅ Covers: 30 days WITHOUT gaps (up to today)
+⚠️  Missing: Nov 13 and Nov 14 (2 days delay)
 
 ┌────────────────────────────────────────┬─────────┬─────────┐
 │   Open-Meteo Archive (2-day delay)     │   GAP   │         │
@@ -70,7 +73,8 @@ end = today                          # Nov 14, 2025
 
 # APIs queried automatically by EVAonline:
 nasa_data = nasa_client.get_daily_data(
-    start=start, end=end  # Oct 16 → Nov 14 (30 days) ✅
+    start=start, 
+    end=today - timedelta(days=2)  # Oct 16 → Nov 12 (28 days, 2d delay) ⚠️
 )
 
 openmeteo_archive = archive_client.get_daily_data(
@@ -80,7 +84,7 @@ openmeteo_archive = archive_client.get_daily_data(
 
 openmeteo_forecast = forecast_client.get_daily_data(
     start=today - timedelta(days=1), 
-    end=end  # Nov 13 → Nov 14 (2 days, gap fill)
+    end=end  # Nov 13 → Nov 14 (2 days, fills NASA + Archive gap)
 )
 
 # Kalman fusion combines all three sources
@@ -96,8 +100,8 @@ openmeteo_forecast = forecast_client.get_daily_data(
 **Constraint**: End date must be ≤ (today - 30 days) for email reports
 
 **APIs Used**:
-- **NASA POWER**: ✅ Complete since 1981 (1990+ validated)
-- **Open-Meteo Archive**: ✅ Complete since 1950 (1990+ validated)
+- **NASA POWER**: ✅ 1990-01-01 to today-2d (2-day delay)
+- **Open-Meteo Archive**: ✅ 1990-01-01 to today-2d (2-day delay)
 - **Xavier**: ✅ Complete 1961-2020 (reference/validation)
 
 **No gap filling needed** - both APIs have complete historical coverage
@@ -211,7 +215,7 @@ end = start + timedelta(days=5)
 
 **Cache Hit Rates** (typical EVAonline usage):
 - Historical requests: ~95% (data rarely changes)
-- Dashboard (30-day): ~85% (partial cache, some new data)
+- Dashboard (29-day): ~85% (partial cache, some new data)
 - Forecast: ~40% (updates frequently)
 
 ---
@@ -386,20 +390,12 @@ if not validate_data_quality(data):
 
 **Key Points**:
 
-1. **NASA POWER**: ✅ Zero latency, complete real-time coverage
+1. **NASA POWER**: ⚠️ 2-day delay, complete real-time coverage
 2. **Open-Meteo Archive**: ⚠️ 2-day delay, excellent historical coverage
-3. **Open-Meteo Forecast**: ✅ Fills 2-day gap, provides 5-day forecast
+3. **Open-Meteo Forecast**: ✅ historial 29 days, provides 5 days forecast
 4. **Gap Filling**: Automatic in EVAonline dashboard (seamless to user)
 5. **Caching**: Essential for performance and respecting free tier limits
 6. **Validation Period**: 1991-2020 (30 years, WMO standard)
-
-**Operational Impact**:
-
-- ✅ Dashboard: Real-time data with <2s response time
-- ✅ Historical reports: Any period 1990-present
-- ✅ Forecasts: 5-day ahead with uncertainty
-- ✅ Resilience: Multiple sources, automatic fallback
-- ✅ Free tier: Stays within API limits via caching
 
 ---
 

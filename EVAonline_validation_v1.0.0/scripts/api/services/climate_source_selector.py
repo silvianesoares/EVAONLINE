@@ -5,20 +5,25 @@ Uses bounding boxes to automatically decide the best climate API
 for each location, prioritizing high-quality regional sources.
 
 Available APIs:
-    - NWS (Regional - USA only):
-        Forecast + Stations real-time
+    - NWS Forecast (Regional - USA only):
+        Forecast (today+5d), high regional quality
 
-    - Open-Meteo Forecast (Global - Worldwide):
-        Global standard, real-time (-29d to +5d)
+    - NWS Stations (Regional - USA only):
+        Real-time observations, high regional quality
+        (today-2d to today)
 
-    - Open-Meteo Archive (Global - Worldwide):
-        Historical data (1990-present)
+    - Open-Meteo Forecast (Global):
+        Global standard (today-29d to today+5d)
 
-    - MET Norway (Global* - Worldwide):
+    - Open-Meteo Archive (Global):
+        Historical data (1990/01/01 to today-2d)
+
+    - MET Norway (Global* - Nordic priority):
         Global coverage, optimized for Europe
+        (today to today+5d)
 
-    - NASA POWER (Global - Worldwide):
-        Universal fallback (2-7 day delay)
+    - NASA POWER (Global):
+        Historical data (1990/01/01 to today-2d)
 """
 
 from typing import Any, Literal
@@ -56,7 +61,7 @@ class ClimateSourceSelector:
 
     Priorities:
         1. NWS (USA): Real-time, high regional quality
-        2. MET Norway (Nordic): World's best precipitation
+        2. MET Norway (Nordic): World's best precipitation and wind data
         3. Open-Meteo Forecast: Real-time, high global quality
         4. NASA POWER: Fallback with 2-7 day delay
     """
@@ -165,13 +170,13 @@ class ClimateSourceSelector:
             },
             "openmeteo_forecast": {
                 "coverage": "global",
-                "period": "today-30d to today+5d",
+                "period": "today-29d to today+5d",
                 "license": "CC-BY-4.0",
                 "description": "Forecast weather data (up to 5 days)",
             },
             "nasa_power": {
                 "coverage": "global",
-                "period": "1990-01-01 to today-2-7d",
+                "period": "1990-01-01 to today-2d",
                 "license": "Public Domain",
                 "description": "NASA POWER meteorological data",
             },
@@ -183,7 +188,7 @@ class ClimateSourceSelector:
             },
             "nws_stations": {
                 "coverage": "usa",
-                "period": "today-1d to now",
+                "period": "today-2d to today",
                 "license": "Public Domain",
                 "description": "NOAA NWS station observations (USA only)",
             },

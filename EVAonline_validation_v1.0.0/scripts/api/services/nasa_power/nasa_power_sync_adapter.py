@@ -1,6 +1,10 @@
 """
 NASA POWER Sync Adapter - Synchronous wrapper for async client.
 
+- Archived Data
+- Start: 1990/01/01
+- End: Today (EVAonline standard)
+
 This adapter allows using the asynchronous NASA POWER client in synchronous code
 (Celery tasks, sync endpoints).
 """

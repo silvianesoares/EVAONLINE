@@ -1,14 +1,14 @@
 """
-Serviço de validação centralizado para dados climáticos.
+Centralized validation service for climate data.
 
-Responsabilidades:
-1. Valida coordenadas (-90 a 90, -180 a 180)
-2. Valida formato de datas (YYYY-MM-DD)
-3. Valida período (7, 14, 21 ou 30 dias) para dashboard online tempo real
-4. Valida período (1-90 dias) para requisições históricas enviadas por email
-5. Valida período fixo (6 dias: hoje→hoje+5d) para previsão dashboard
-6. Valida variáveis climáticas
-7. Valida nome de fonte (string)
+Responsibilities:
+1. Validate coordinates (-90 to 90, -180 to 180)
+2. Validate date format (YYYY-MM-DD)
+3. Validate period (7, 14, 21 or 30 days) for online real-time dashboard
+4. Validate period (1-90 days) for historical requests sent by email
+5. Validate fixed period (6 days: today->today+5d) for dashboard forecast
+6. Validate climate variables
+7. Validate source name (string)
 """
 
 from datetime import date, timedelta
@@ -20,70 +20,68 @@ from .climate_source_availability import OperationMode
 
 
 class ClimateValidationService:
-    """Centraliza validações de coordenadas e datas climáticas."""
+    """Centralizes climate coordinate and date validations."""
 
-    # Constantes de validação
+    # Validation constants
     LAT_MIN, LAT_MAX = -90.0, 90.0
     LON_MIN, LON_MAX = -180.0, 180.0
 
-    # Data mínima suportada pelas APIs (NASA POWER, OpenMeteo Archive)
+    # Minimum date supported by APIs (NASA POWER, OpenMeteo Archive)
     MIN_HISTORICAL_DATE = date(1990, 1, 1)
 
-    # Variáveis válidas (padronizadas para todas as APIs)
-    # Set para lookup O(1)
+    # Valid variables (standardized for all APIs)
+    # Set for O(1) lookup
     VALID_CLIMATE_VARIABLES: set[str] = {
-        # Temperatura
+        # Temperature
         "temperature_2m",
         "temperature_2m_max",
         "temperature_2m_min",
         "temperature_2m_mean",
-        # Umidade
+        # Humidity
         "relative_humidity_2m",
         "relative_humidity_2m_max",
         "relative_humidity_2m_min",
         "relative_humidity_2m_mean",
-        # Vento (IMPORTANTE: todas as APIs fornecem a 2m após conversão)
+        # Wind (IMPORTANT: all APIs provide at 2m after conversion)
         "wind_speed_2m",
         "wind_speed_2m_mean",
         "wind_speed_2m_ms",
-        # Precipitação
+        # Precipitation
         "precipitation",
         "precipitation_sum",
-        # Radiação solar
+        # Solar radiation
         "solar_radiation",
         "shortwave_radiation_sum",
-        # Evapotranspiração
+        # Evapotranspiration
         "evapotranspiration",
         "et0_fao_evapotranspiration",
     }
 
-    # Fontes válidas (todas as 6 APIs implementadas)
-    # Set para lookup O(1)
+    # Valid sources (all 6 implemented APIs)
+    # Set for O(1) lookup
     VALID_SOURCES: set[str] = {
-        # Global - Dados Históricos
-        "openmeteo_archive",  # Histórico (1990-01-01 → hoje-2d)
-        "nasa_power",  # Histórico (1990-01-01 → hoje)
-        # Global - Previsão/Recent
-        "openmeteo_forecast",  # Recent+Forecast (hoje-30d → hoje+5d)
-        "met_norway",  # Previsão (hoje → hoje+5d)
-        # USA Continental - Previsão
-        "nws_forecast",  # Previsão (hoje → hoje+5d)
-        "nws_stations",  # Observações tempo real (apenas dia atual)
+        # Global - Historical Data
+        "openmeteo_archive",  # Historical (1990-01-01 -> today-2d)
+        "nasa_power",  # Historical (1990-01-01 -> today-2d)
+        # Global/Nordic region - Forecast/Recent
+        "openmeteo_forecast",  # Recent+Forecast (today-29d -> today+5d)
+        "met_norway",  # Forecast (today -> today+5d)
+        # USA Stations/Forecast
+        "nws_forecast",  # Forecast (today -> today+5d)
+        "nws_stations",  # Real-time observations (today-2days -> today)
     }
 
     @staticmethod
     def _parse_date(date_str: str) -> date:
-        """Parser privado para datas (YYYY-MM-DD)."""
+        """Private parser for dates (YYYY-MM-DD)."""
         try:
             return date.fromisoformat(
                 date_str
-            )  # Mais robusto e eficiente que strptime
+            )  # More robust and efficient than strptime
         except ValueError as e:
-            logger.bind(date_str=date_str).error(
-                f"Formato de data inválido: {e}"
-            )
+            logger.bind(date_str=date_str).error(f"Invalid date format: {e}")
             raise ValueError(
-                f"Data inválida '{date_str}': use YYYY-MM-DD"
+                f"Invalid date '{date_str}': use YYYY-MM-DD"
             ) from e
 
     @staticmethod
@@ -94,17 +92,17 @@ class ClimateValidationService:
         period_days: int | None = None,
     ) -> tuple[bool, dict[str, Any]]:
         """
-        Valida modo de operação e suas restrições específicas.
+        Validate operation mode and its specific constraints.
 
         Args:
-            mode: Modo de operação:
+            mode: Operation mode:
                 'historical_email', 'dashboard_current', 'dashboard_forecast'
-            start_date: Data inicial (YYYY-MM-DD)
-            end_date: Data final (YYYY-MM-DD)
-            period_days: Número de dias (opcional, será calculado se omitido)
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            period_days: Number of days (optional, will be calculated if omitted)
 
         Returns:
-            Tupla (válido, detalhes)
+            Tuple (valid, details)
         """
         valid_modes = [
             OperationMode.HISTORICAL_EMAIL.value,
@@ -113,10 +111,10 @@ class ClimateValidationService:
         ]
         if mode not in valid_modes:
             return False, {
-                "error": f"Modo inválido '{mode}'. Válidos: {valid_modes}"
+                "error": f"Invalid mode '{mode}'. Valid: {valid_modes}"
             }
 
-        # Parser validado
+        # Validated parser
         try:
             start = ClimateValidationService._parse_date(start_date)
             end = ClimateValidationService._parse_date(end_date)
@@ -126,84 +124,86 @@ class ClimateValidationService:
         if period_days is None:
             period_days = (end - start).days + 1
 
-        today = date.today()  # Consistente com date.today()
+        today = date.today()  # Consistent with date.today()
         errors: list[str] = []
 
-        # MODO 1: HISTORICAL_EMAIL (dados antigos, envio por email)
+        # MODE 1: HISTORICAL_EMAIL (old data, email delivery)
         if mode == OperationMode.HISTORICAL_EMAIL.value:
-            # Período: 1-90 dias
-            if not (1 <= period_days <= 90):
+            # VALIDATION MODE: Allow any period length (not just 1-90 days)
+            # Original: if not (1 <= period_days <= 90)
+            # For validation purposes, we need to support 1990-2025 (34 years)
+            if period_days < 1:
                 errors.append(
-                    f"Período histórico deve ser 1-90 dias, "
-                    f"obtido {period_days}"
+                    f"Historical period must be >= 1 day, "
+                    f"got {period_days}"
                 )
-            # Constraint: end_date ≤ hoje - 30 dias
-            max_end = today - timedelta(days=30)
+            # Constraint: end_date <= today - 29 days
+            max_end = today
             if end > max_end:
                 errors.append(
-                    f"end_date histórico deve ser ≤ {max_end} "
-                    f"(hoje - 30 dias), obtido {end_date}"
+                    f"Historical end_date must be <= {max_end} "
+                    f"(today), got {end_date}"
                 )
             # Constraint: start_date >= 1990-01-01
             if start < ClimateValidationService.MIN_HISTORICAL_DATE:
                 errors.append(
-                    f"start_date histórico deve ser >= "
+                    f"Historical start_date must be >= "
                     f"{ClimateValidationService.MIN_HISTORICAL_DATE} "
-                    f"(mínimo suportado), obtido {start_date}"
+                    f"(minimum supported), got {start_date}"
                 )
 
-        # MODO 2: DASHBOARD_CURRENT (dados recentes, web tempo real)
+        # MODE 2: DASHBOARD_CURRENT (recent data, real-time web)
         elif mode == OperationMode.DASHBOARD_CURRENT.value:
-            # Período: exatamente 7, 14, 21 ou 30 dias (dropdown)
+            # Period: exactly 7, 14, 21 or 30 days (dropdown)
             if period_days not in [7, 14, 21, 30]:
                 errors.append(
-                    f"Período dashboard deve ser [7, 14, 21, 30] dias, "
-                    f"obtido {period_days}"
+                    f"Dashboard period must be [7, 14, 21, 30] days, "
+                    f"got {period_days}"
                 )
-            # Constraint: end_date = hoje (fixo)
+            # Constraint: end_date = today (fixed)
             if end != today:
                 errors.append(
-                    f"end_date dashboard deve ser hoje ({today}), "
-                    f"obtido {end_date}"
+                    f"Dashboard end_date must be today ({today}), "
+                    f"got {end_date}"
                 )
-            # Constraint: start_date não pode ser anterior a 1990-01-01
+            # Constraint: start_date cannot be before 1990-01-01
             if start < ClimateValidationService.MIN_HISTORICAL_DATE:
                 errors.append(
-                    f"start_date dashboard deve ser >= "
+                    f"Dashboard start_date must be >= "
                     f"{ClimateValidationService.MIN_HISTORICAL_DATE}, "
-                    f"obtido {start_date}"
+                    f"got {start_date}"
                 )
 
-        # MODO 3: DASHBOARD_FORECAST (previsão 5 dias, web)
+        # MODE 3: DASHBOARD_FORECAST (today + 5 days, web)
         elif mode == OperationMode.DASHBOARD_FORECAST.value:
-            # Período: hoje → hoje+5d = 6 dias (com tolerância para timezone)
-            if period_days not in [5, 6, 7]:  # Tolerância ±1 dia
+            # Period: today -> today+5d = 6 days (with timezone tolerance)
+            if period_days not in [5, 6]:  # Tolerance ±1 day
                 errors.append(
-                    f"Período forecast deve ser 5-7 dias "
-                    f"(hoje → hoje+5d com tolerância), obtido {period_days}"
+                    f"Forecast period must be 5-6 days "
+                    f"(today -> today+5d with tolerance), got {period_days}"
                 )
-            # Constraint: start_date ≈ hoje (tolerância ±1 dia para timezone)
+            # Constraint: start_date ≈ today (tolerance ±1 day for timezone)
             if abs((start - today).days) > 1:
                 errors.append(
-                    f"start_date forecast deve ser hoje±1d "
-                    f"({today}), obtido {start_date}"
+                    f"Forecast start_date must be today±1d "
+                    f"({today}), got {start_date}"
                 )
-            # Constraint: end_date ≈ hoje + 5 dias (tolerância ±1 dia)
+            # Constraint: end_date ≈ today + 5 days (tolerance ±1 day)
             expected_end = today + timedelta(days=5)
             if abs((end - expected_end).days) > 1:
                 errors.append(
-                    f"end_date forecast deve ser {expected_end}±1d "
-                    f"(hoje+5d), obtido {end_date}"
+                    f"Forecast end_date must be {expected_end}±1d "
+                    f"(today+5d), got {end_date}"
                 )
 
         if errors:
             logger.bind(
                 mode=mode, start=start_date, end=end_date, period=period_days
-            ).warning(f"Validação de modo falhou: {errors}")
+            ).warning(f"Mode validation failed: {errors}")
             return False, {"errors": errors, "mode": mode}
 
         logger.bind(mode=mode, start=start, end=end, period=period_days).debug(
-            "Modo validado com sucesso"
+            "Mode validated successfully"
         )
         return True, {
             "mode": mode,
@@ -215,27 +215,25 @@ class ClimateValidationService:
 
     @staticmethod
     def validate_coordinates(
-        lat: float, lon: float, location_name: str = "Localização"
+        lat: float, lon: float, location_name: str = "Location"
     ) -> tuple[bool, dict[str, Any]]:
         """
-        Valida coordenadas geográficas.
+        Validate geographic coordinates.
 
         Args:
             lat: Latitude
             lon: Longitude
-            location_name: Nome do local (para mensagens de erro)
+            location_name: Location name (for error messages)
 
         Returns:
-            Tupla (válido, detalhes)
+            Tuple (valid, details)
         """
         try:
             lat = float(lat)
             lon = float(lon)
         except (TypeError, ValueError):
             return False, {
-                "error": (
-                    f"Formato de coordenadas inválido " f"para {location_name}"
-                )
+                "error": (f"Invalid coordinate format " f"for {location_name}")
             }
 
         errors: list[str] = []
@@ -247,22 +245,22 @@ class ClimateValidationService:
 
         if not lat_min <= lat <= lat_max:
             errors.append(
-                f"Latitude {lat} fora do intervalo ({lat_min} a {lat_max})"
+                f"Latitude {lat} outside range ({lat_min} to {lat_max})"
             )
 
         if not lon_min <= lon <= lon_max:
             errors.append(
-                f"Longitude {lon} fora do intervalo ({lon_min} a {lon_max})"
+                f"Longitude {lon} outside range ({lon_min} to {lon_max})"
             )
 
         if errors:
             logger.bind(location=location_name, lat=lat, lon=lon).warning(
-                f"Validação de coordenadas falhou: {errors}"
+                f"Coordinate validation failed: {errors}"
             )
             return False, {"errors": errors}
 
         logger.bind(location=location_name, lat=lat, lon=lon).debug(
-            "Coordenadas validadas"
+            "Coordinates validated"
         )
         return True, {"lat": lat, "lon": lon, "valid": True}
 
@@ -274,24 +272,24 @@ class ClimateValidationService:
         max_future_days: int = 0,
     ) -> tuple[bool, dict[str, Any]]:
         """
-        Valida FORMATO de datas e limites de futuro.
+        Validate date FORMAT and future limits.
 
-        NOTA: NÃO valida período em dias (min/max).
-        Cada modo valida seu período específico em validate_request_mode().
-        Cada API valida limites temporais próprios em
+        Does NOT validate period in days (min/max).
+        Each mode validates its specific period in validate_request_mode().
+        Each API validates its own temporal limits in
         climate_source_availability.py.
 
         Args:
-            start_date: Data inicial (YYYY-MM-DD)
-            end_date: Data final (YYYY-MM-DD)
-            allow_future: Se permite datas futuras no range
-            max_future_days: Máximo de dias no futuro permitido
-                (0 = até hoje, 5 = até hoje+5d para forecast)
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            allow_future: If future dates are allowed in range
+            max_future_days: Maximum days in future allowed
+                (0 = up to today, 5 = up to today+5d for forecast)
 
         Returns:
-            Tupla (válido, detalhes)
+            Tuple (valid, details)
         """
-        # Parser validado
+        # Validated parser
         try:
             start = ClimateValidationService._parse_date(start_date)
             end = ClimateValidationService._parse_date(end_date)
@@ -302,42 +300,42 @@ class ClimateValidationService:
         today = date.today()
         max_allowed_date = today + timedelta(days=max_future_days)
 
-        # Validação 1: start <= end
+        # Validation 1: start <= end
         if start > end:
             errors.append(f"start_date {start} > end_date {end}")
 
-        # Validação 2: Limites de futuro
+        # Validation 2: Future limits
         if allow_future:
-            # Quando permite futuro, validar contra max_future_days
+            # When future allowed, validate against max_future_days
             if end > max_allowed_date:
                 errors.append(
-                    f"end_date {end} excede máximo "
-                    f"({max_allowed_date}, hoje+{max_future_days}d)"
+                    f"end_date {end} exceeds maximum "
+                    f"({max_allowed_date}, today+{max_future_days}d)"
                 )
         else:
-            # Quando NÃO permite futuro, apenas end_date deve ser <= today
-            # (start_date pode ser hoje para dashboard_current)
+            # When future NOT allowed, only end_date must be <= today
+            # (start_date can be today for dashboard_current)
             if end > today:
                 errors.append(
-                    f"end_date {end} não pode ser no futuro (hoje é {today})"
+                    f"end_date {end} cannot be in future (today is {today})"
                 )
 
-        # Validação 3: Data mínima histórica (aplicada universalmente)
+        # Validation 3: Minimum historical date (applied universally)
         if start < ClimateValidationService.MIN_HISTORICAL_DATE:
             errors.append(
-                f"start_date {start} é anterior à data mínima suportada "
+                f"start_date {start} is before minimum supported date "
                 f"({ClimateValidationService.MIN_HISTORICAL_DATE})"
             )
 
         if errors:
             logger.bind(start=start_date, end=end_date).warning(
-                f"Validação de intervalo de datas falhou: {errors}"
+                f"Date range validation failed: {errors}"
             )
             return False, {"errors": errors}
 
         period_days = (end - start).days + 1
         logger.bind(start=start, end=end, period=period_days).debug(
-            "Intervalo de datas validado"
+            "Date range validated"
         )
         return True, {
             "start": start,
@@ -351,16 +349,16 @@ class ClimateValidationService:
         variables: list[str],
     ) -> tuple[bool, dict[str, Any]]:
         """
-        Valida lista de variáveis climáticas.
+        Validate list of climate variables.
 
         Args:
-            variables: Lista de variáveis desejadas
+            variables: List of desired variables
 
         Returns:
-            Tupla (válido, detalhes)
+            Tuple (valid, details)
         """
         if not variables:
-            return False, {"error": "Pelo menos uma variável é obrigatória"}
+            return False, {"error": "At least one variable is required"}
 
         invalid_vars = (
             set(variables) - ClimateValidationService.VALID_CLIMATE_VARIABLES
@@ -368,39 +366,39 @@ class ClimateValidationService:
 
         if invalid_vars:
             logger.bind(invalid=list(invalid_vars)).warning(
-                "Variáveis climáticas inválidas detectadas"
+                "Invalid climate variables detected"
             )
             return False, {
-                "error": f"Variáveis inválidas: {invalid_vars}",
+                "error": f"Invalid variables: {invalid_vars}",
                 "valid_options": sorted(
                     ClimateValidationService.VALID_CLIMATE_VARIABLES
                 ),
             }
 
-        logger.bind(variables=variables).debug("Variáveis validadas")
+        logger.bind(variables=variables).debug("Variables validated")
         return True, {"variables": variables, "valid": True}
 
     @staticmethod
     def validate_source(source: str) -> tuple[bool, dict[str, Any]]:
         """
-        Valida fonte de dados.
+        Validate data source.
 
         Args:
-            source: Nome da fonte
+            source: Source name
 
         Returns:
-            Tupla (válido, detalhes)
+            Tuple (valid, details)
         """
         if source not in ClimateValidationService.VALID_SOURCES:
-            logger.bind(source=source).warning("Fonte inválida")
+            logger.bind(source=source).warning("Invalid source")
             return False, {
-                "error": f"Fonte inválida: {source}",
+                "error": f"Invalid source: {source}",
                 "valid_options": sorted(
                     ClimateValidationService.VALID_SOURCES
                 ),
             }
 
-        logger.bind(source=source).debug("Fonte validada")
+        logger.bind(source=source).debug("Source validated")
         return True, {"source": source, "valid": True}
 
     @staticmethod
@@ -408,23 +406,23 @@ class ClimateValidationService:
         start_date: str, end_date: str
     ) -> tuple[str | None, str | None]:
         """
-        Auto-detecta modo de operação baseado nas datas.
-        NOTA: Interface tem botões, mas detector útil para validação.
+        Auto-detect operation mode based on dates.
+        NOTE: Interface has buttons, but detector useful for validation.
 
-        Lógica:
-        1. Se start ≈ hoje E end ≈ hoje+5d → DASHBOARD_FORECAST
-        2. Se end = hoje E period in [7,14,21,30] → DASHBOARD_CURRENT
-        3. Se end ≤ hoje-30d E period ≤ 90 → HISTORICAL_EMAIL
-        4. Caso contrário → None (modo não identificável)
+        Logic:
+        1. If start ≈ today AND end ≈ today+5d -> DASHBOARD_FORECAST
+        2. If end = today AND period in [7,14,21,30] -> DASHBOARD_CURRENT
+        3. If end <= today-2d AND period <= 90 -> HISTORICAL_EMAIL
+        4. Otherwise -> None (mode not identifiable)
 
         Args:
-            start_date: Data inicial (YYYY-MM-DD)
-            end_date: Data final (YYYY-MM-DD)
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
 
         Returns:
-            Tupla (modo detectado ou None, mensagem de erro)
+            Tuple (detected mode or None, error message)
         """
-        # Parser validado
+        # Validated parser
         try:
             start = ClimateValidationService._parse_date(start_date)
             end = ClimateValidationService._parse_date(end_date)
@@ -434,28 +432,29 @@ class ClimateValidationService:
         today = date.today()
         period_days = (end - start).days + 1
 
-        # Regra 1: DASHBOARD_FORECAST (com tolerância de ±1 dia para timezone)
+        # Rule 1: DASHBOARD_FORECAST (with ±1 day tolerance for timezone)
         expected_forecast_end = today + timedelta(days=5)
         is_start_today = abs((start - today).days) <= 1
         is_end_forecast = abs((end - expected_forecast_end).days) <= 1
 
-        if is_start_today and is_end_forecast and period_days in [5, 6, 7]:
+        if is_start_today and is_end_forecast and period_days in [5, 6]:
             return OperationMode.DASHBOARD_FORECAST.value, None
 
-        # Regra 2: DASHBOARD_CURRENT
+        # Rule 2: DASHBOARD_CURRENT
         if end == today and period_days in [7, 14, 21, 30]:
             return OperationMode.DASHBOARD_CURRENT.value, None
 
-        # Regra 3: HISTORICAL_EMAIL
-        if end <= today - timedelta(days=30) and 1 <= period_days <= 90:
+        # Rule 3: HISTORICAL_EMAIL
+        # end <= today - 2 days AND 1 <= period <= 90 days
+        if end <= today - timedelta(days=2) and 1 <= period_days <= 90:
             return OperationMode.HISTORICAL_EMAIL.value, None
 
-        # Caso contrário: ambíguo
+        # Otherwise: ambiguous
         error_msg = (
-            f"Não foi possível detectar modo das datas "
-            f"{start_date} a {end_date}. "
-            f"Período: {period_days} dias. "
-            f"Especifique o modo explicitamente."
+            f"Could not detect mode from dates "
+            f"{start_date} to {end_date}. "
+            f"Period: {period_days} days. "
+            f"Specify mode explicitly."
         )
         logger.bind(
             start=start_date, end=end_date, period=period_days
@@ -474,20 +473,20 @@ class ClimateValidationService:
         mode: str | None = None,
     ) -> tuple[bool, dict[str, Any]]:
         """
-        Valida todos os parâmetros de uma vez.
+        Validate all parameters at once.
 
         Args:
-            lat, lon: Coordenadas
-            start_date, end_date: Intervalo de datas
-            variables: Variáveis climáticas
-            source: Fonte de dados
-            allow_future: Permite datas futuras
-            mode: Modo de operação (None = auto-detect)
+            lat, lon: Coordinates
+            start_date, end_date: Date range
+            variables: Climate variables
+            source: Data source
+            allow_future: Allow future dates
+            mode: Operation mode (None = auto-detect)
 
         Returns:
-            Tupla (válido, detalhes)
+            Tuple (valid, details)
         """
-        # Auto-detectar modo se não fornecido
+        # Auto-detect mode if not provided
         if mode is None:
             detected_mode, error = (
                 ClimateValidationService.detect_mode_from_dates(
@@ -496,12 +495,10 @@ class ClimateValidationService:
             )
             if detected_mode:
                 mode = detected_mode
-                logger.bind(mode=mode).info("Modo auto-detectado")
+                logger.bind(mode=mode).info("Mode auto-detected")
             else:
-                logger.bind(error=error).warning(
-                    "Falha na auto-detecção de modo"
-                )
-                # Continua sem modo (para compatibilidade)
+                logger.bind(error=error).warning("Failed to auto-detect mode")
+                # Continue without mode (for compatibility)
 
         validations = [
             (
@@ -510,19 +507,19 @@ class ClimateValidationService:
             ),
         ]
 
-        # Determinar max_future_days e allow_future baseado no modo
+        # Determine max_future_days and allow_future based on mode
         max_future_days = 0
         effective_allow_future = allow_future
 
         if mode == OperationMode.DASHBOARD_FORECAST.value:
             max_future_days = 5
-            effective_allow_future = True  # Forecast SEMPRE permite futuro
+            effective_allow_future = True  # Forecast ALWAYS allows future
         elif mode == OperationMode.DASHBOARD_CURRENT.value:
             max_future_days = 0
-            effective_allow_future = False  # Current termina hoje
+            effective_allow_future = False  # Current ends today
         elif mode == OperationMode.HISTORICAL_EMAIL.value:
             max_future_days = 0
-            effective_allow_future = False  # Historical é passado
+            effective_allow_future = False  # Historical is past
 
         validations.append(
             (
@@ -546,7 +543,7 @@ class ClimateValidationService:
             ]
         )
 
-        # Adicionar validação de modo se detectado/fornecido
+        # Add mode validation if detected/provided
         if mode:
             validations.append(
                 (
@@ -568,11 +565,9 @@ class ClimateValidationService:
 
         if errors:
             logger.bind(errors=list(errors.keys())).warning(
-                "Erros de validação encontrados"
+                "Validation errors found"
             )
             return False, {"errors": errors, "details": details}
 
-        logger.bind(lat=lat, lon=lon, mode=mode).info(
-            "Todas as validações passaram"
-        )
+        logger.bind(lat=lat, lon=lon, mode=mode).info("All validations passed")
         return True, {"all_valid": True, "details": details}

@@ -1,38 +1,38 @@
 """
-Sync Adapter para OpenTopoData Elevation API.
+Sync Adapter for OpenTopoData Elevation API.
 
-Converte chamadas assíncronas do OpenTopoClient em métodos síncronos
-para compatibilidade com Celery tasks, scripts offline e código síncrono
-legado.
+Converts asynchronous calls from OpenTopoClient to synchronous methods
+for compatibility with Celery tasks, offline scripts and legacy synchronous
+code.
 
 API: https://www.opentopodata.org/
-Cobertura: Global (múltiplos datasets com fallback nativo)
-Resolução: ~30m (SRTM/ASTER) a ~1.8km (ETOPO1)
-Licença: Pública (dados SRTM/ASTER domínio público)
+Coverage: Global (multiple datasets with native fallback)
+Resolution: ~30m (SRTM/ASTER) to ~1.8km (ETOPO1)
+License: Public (SRTM/ASTER data public domain)
 
 Multi-Dataset Fallback:
-- /v1/srtm30m,aster30m (padrão)
-- API tenta SRTM30m primeiro, automaticamente ASTER30m se necessário
-- Cada ponto usa o melhor dataset disponível
+- /v1/srtm30m,aster30m (default)
+- API tries SRTM30m first, automatically ASTER30m if needed
+- Each point uses the best available dataset
 
 Rate Limits (2025):
-- Máximo 1 request por segundo
-- Máximo 1000 requests por dia
-- Máximo 100 localizações por request
+- Maximum 1 request per second
+- Maximum 1000 requests per day
+- Maximum 100 locations per request
 
 Cache Strategy:
-- TTL: 30 dias (elevação não muda)
+- TTL: 30 days (elevation doesn't change)
 - Key: f"opentopo:{lat:.6f}:{lon:.6f}"
 
-Uso no Cálculo de ETo FAO-56:
-1. **Pressão Atmosférica** (P):
+Use in FAO-56 ETo Calculation:
+1. **Atmospheric Pressure** (P):
    P = 101.3 x [(293 - 0.0065 x z) / 293]^5.26
 
 2. **Psychrometric Constant** (Y):
    Y = 0.665 x 10^-3 x P
 
-3. **Radiação Solar Extraterrestre** (Ra):
-   Aumenta ~10% por 1000m de altitude
+3. **Extraterrestrial Solar Radiation** (Ra):
+   Increases ~10% per 1000m altitude
 """
 
 import asyncio
@@ -41,8 +41,8 @@ from typing import Any
 
 from loguru import logger
 
-from backend.api.services.geographic_utils import GeographicUtils
-from backend.api.services.opentopo.opentopo_client import (
+from scripts.api.services.geographic_utils import GeographicUtils
+from scripts.api.services.opentopo.opentopo_client import (
     OpenTopoClient,
     OpenTopoConfig,
     OpenTopoLocation,
@@ -51,10 +51,10 @@ from backend.api.services.opentopo.opentopo_client import (
 
 class OpenTopoSyncAdapter:
     """
-    Adapter síncrono para OpenTopoData Elevation API.
+    Synchronous adapter for OpenTopoData Elevation API.
 
-    Suporta Redis cache (via ClimateCache) com fallback para cache local.
-    Fornece métodos síncronos para elevação (ponto único ou batch).
+    Supports Redis cache (via ClimateCache) with fallback to local cache.
+    Provides synchronous methods for elevation (single point or batch).
     """
 
     def __init__(
@@ -63,7 +63,7 @@ class OpenTopoSyncAdapter:
         cache: Any | None = None,
     ):
         """
-        Inicializa adapter síncrono.
+        Initialize synchronous adapter.
 
         Args:
             config: Optional OpenTopoConfig
@@ -91,9 +91,9 @@ class OpenTopoSyncAdapter:
         dataset: str | None = None,
     ) -> OpenTopoLocation | None:
         """
-        Busca elevação para um ponto único (SÍNCRONO).
+        Fetch elevation for a single point (SYNCHRONOUS).
 
-        Usa multi-dataset fallback nativo da API.
+        Uses API's native multi-dataset fallback.
 
         Args:
             lat: Latitude
@@ -104,18 +104,18 @@ class OpenTopoSyncAdapter:
             OpenTopoLocation with elevation, or None if error
 
         Example:
-            >>> adapter = OpenTopoSyncAdapter()
-            >>> location = adapter.get_elevation_sync(-15.7801, -47.9292)
-            >>> if location:
-            ...     print(f"Elevation: {location.elevation}m")
+            > adapter = OpenTopoSyncAdapter()
+            > location = adapter.get_elevation_sync(-15.7801, -47.9292)
+            > if location:
+                print(f"Elevation: {location.elevation}m")
             Elevation: 1172m
         """
         try:
-            # Tentar obter loop existente
+            # Try to get existing loop
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # Loop já está rodando (contexto async)
-                # Usar executor para evitar "RuntimeError: This event loop
+                # Loop is already running (async context)
+                # Use executor to avoid "RuntimeError: This event loop
                 # is already running"
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(
@@ -124,12 +124,12 @@ class OpenTopoSyncAdapter:
                     )
                     return future.result()
             else:
-                # Loop existe mas não está rodando
+                # Loop exists but is not running
                 return loop.run_until_complete(
                     self._async_get_elevation(lat, lon, dataset)
                 )
         except RuntimeError:
-            # Nenhum loop, criar um novo
+            # No loop exists, create a new one
             return asyncio.run(self._async_get_elevation(lat, lon, dataset))
 
     async def _async_get_elevation(
@@ -139,7 +139,7 @@ class OpenTopoSyncAdapter:
         dataset: str | None = None,
     ) -> OpenTopoLocation | None:
         """
-        Implementação async interna (ponto único).
+        Internal async implementation (single point).
         """
         client = OpenTopoClient(config=self.config, cache=self.cache)
 
@@ -154,7 +154,7 @@ class OpenTopoSyncAdapter:
         dataset: str | None = None,
     ) -> list[OpenTopoLocation]:
         """
-        Busca múltiplos pontos de forma SÍNCRONA (máx 100 por request).
+        Fetch multiple points SYNCHRONOUSLY (max 100 per request).
 
         Auto-switches to ASTER30m if batch contains lat > 60°.
         For > 100 locations, splits recursively and respects rate limits.
@@ -167,13 +167,13 @@ class OpenTopoSyncAdapter:
             List of OpenTopoLocation objects
 
         Example:
-            >>> locations = [
-            ...     (-15.7801, -47.9292),  # Brasília
-            ...     (-23.5505, -46.6333),  # São Paulo
-            ... ]
-            >>> results = adapter.get_elevations_batch_sync(locations)
-            >>> for loc in results:
-            ...     print(f"{loc.lat}, {loc.lon}: {loc.elevation}m")
+            > locations = [
+                (-15.7801, -47.9292),  # Brasília
+                (-23.5505, -46.6333),  # São Paulo
+            ]
+            > results = adapter.get_elevations_batch_sync(locations)
+            > for loc in results:
+                print(f"{loc.lat}, {loc.lon}: {loc.elevation}m")
         """
         try:
             # Tentar obter loop existente
@@ -187,12 +187,12 @@ class OpenTopoSyncAdapter:
                     )
                     return future.result()
             else:
-                # Loop existe mas não está rodando
+                # Loop exists but is not running
                 return loop.run_until_complete(
                     self._async_get_elevations_batch(locations, dataset)
                 )
         except RuntimeError:
-            # Nenhum loop, criar um novo
+            # No loop exists, create a new one
             return asyncio.run(
                 self._async_get_elevations_batch(locations, dataset)
             )
@@ -203,7 +203,7 @@ class OpenTopoSyncAdapter:
         dataset: str | None = None,
     ) -> list[OpenTopoLocation]:
         """
-        Implementação async interna (batch).
+        Internal async implementation (batch).
         """
         client = OpenTopoClient(config=self.config, cache=self.cache)
 
@@ -212,41 +212,11 @@ class OpenTopoSyncAdapter:
         finally:
             await client.close()
 
-    def is_in_coverage_sync(self, lat: float, lon: float) -> bool:
-        """
-        [DEPRECATED] Verificar cobertura SRTM30m.
-
-        NOTA: Com multi-dataset fallback nativo, este método não é mais
-        necessário. A API automaticamente usa SRTM→ASTER conforme necessário.
-
-        Args:
-            lat: Latitude
-            lon: Longitude
-
-        Returns:
-            True (sempre, pois fallback é automático globalmente)
-        """
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(
-                        asyncio.run,
-                        self._async_is_in_coverage(lat, lon),
-                    )
-                    return future.result()
-            else:
-                return loop.run_until_complete(
-                    self._async_is_in_coverage(lat, lon)
-                )
-        except RuntimeError:
-            return asyncio.run(self._async_is_in_coverage(lat, lon))
-
     async def _async_is_in_coverage(self, lat: float, lon: float) -> bool:
         """
-        Implementação async interna (coverage check).
+        Internal async implementation (coverage check).
 
-        Sempre retorna True com fallback nativo.
+        Always returns True with native fallback.
         """
         if not GeographicUtils.is_valid_coordinate(lat, lon):
             return False
@@ -254,7 +224,7 @@ class OpenTopoSyncAdapter:
 
     def health_check_sync(self) -> bool:
         """
-        Health check síncrono (testa com coordenada global).
+        Synchronous health check (tests with global coordinate).
 
         Returns:
             bool: True if API is accessible
@@ -274,29 +244,29 @@ class OpenTopoSyncAdapter:
 
     async def _async_health_check(self) -> bool:
         """
-        Health check assíncrono interno.
+        Internal asynchronous health check.
 
-        Testa com coordenadas de Brasília (elevação conhecida ~1172m).
+        Tests with Brasilia coordinates (known elevation ~1172m).
         """
         client = OpenTopoClient(config=self.config, cache=self.cache)
 
         try:
-            # Teste com Brasília (elevação conhecida)
-            # Brasília: -15.7801, -47.9292, elevação ≈ 1172m
+            # Test with Brasilia (known elevation)
+            # Brasilia: -15.7801, -47.9292, elevation ≈ 1172m
             location = await client.get_elevation(-15.7801, -47.9292)
 
             if location and location.elevation:
                 logger.info(
-                    f"🏥 OpenTopoData health check: ✅ OK "
+                    f"OpenTopoData health check: OK "
                     f"(Brasília elevation = {location.elevation:.1f}m)"
                 )
                 return True
             else:
-                logger.error("🏥 OpenTopoData health check: ❌ FAIL (no data)")
+                logger.error("OpenTopoData health check: FAIL (no data)")
                 return False
 
         except Exception as e:
-            logger.error(f"🏥 OpenTopoData health check failed: {e}")
+            logger.error(f"OpenTopoData health check failed: {e}")
             return False
 
         finally:
@@ -304,10 +274,10 @@ class OpenTopoSyncAdapter:
 
     def get_coverage_info(self) -> dict:
         """
-        Retorna informações sobre cobertura e datasets disponíveis.
+        Return information about coverage and available datasets.
 
         Returns:
-            dict: Informações de cobertura com quality tiers
+            dict: Coverage information with quality tiers
         """
         return {
             "adapter": "OpenTopoSyncAdapter",
@@ -394,9 +364,9 @@ class OpenTopoSyncAdapter:
             },
             "fao56_calculations": {
                 "atmospheric_pressure": (
-                    "P = 101.3 × [(293 - 0.0065 × z) / 293]^5.26"
+                    "P = 101.3 x [(293 - 0.0065 x z) / 293]^5.26"
                 ),
-                "psychrometric_constant": "γ = 0.665 × 10^-3 × P",
+                "psychrometric_constant": "Y = 0.665 x 10^-3 x P",
                 "solar_radiation": ("Increases ~10% per 1000m elevation"),
                 "location": (
                     "backend.api.services.weather_utils.ElevationUtils"

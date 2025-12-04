@@ -1,5 +1,11 @@
 """
 NWS Stations Client Optimized for Interactive Map + Daily ETo Calculation
+
+- Station Search: Nearest active station with recent valid observation
+- Start: Today - 2 days
+- End: Today (EVAonline standard)
+- Total: 3 days forecast
+
 """
 
 import os
@@ -48,9 +54,9 @@ class NWSStationsConfig(BaseModel):
     )
     # max_stations: int = 10
     # observation_delay_threshold: int = 30  # minutes (20min normal)
-    # max_days_back: int = 5  # Official NWS API limit = 7 days
+    # max_days_back: int = 3
     observation_delay_threshold: int = 30  # minutes
-    max_days_back: int = 7  # NWS: up to ~7 days (3-4 in practice)
+    max_days_back: int = 3  # NWS: up to ~3 days (2-3 in practice)
 
 
 class NWSStation(BaseModel):
@@ -133,6 +139,26 @@ class NWSStationsClient:
         except Exception as e:
             logger.debug(f"Failed to get grid: {e}")
             return None
+
+    async def health_check(self) -> bool:
+        """
+        Verifica se API NWS Stations está acessível.
+
+        Returns:
+            True se API responde, False caso contrário
+        """
+        try:
+            # Testar com uma estação conhecida (JFK Airport)
+            url = f"{self.config.base_url}/stations/KJFK"
+            response = await self.client.get(url)
+            response.raise_for_status()
+
+            logger.info("✅ NWS Stations API: Healthy")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ NWS Stations API health check failed: {e}")
+            return False
 
     async def find_nearest_active_station(
         self, lat: float, lon: float, max_candidates: int = 5
@@ -237,13 +263,13 @@ class NWSStationsClient:
     async def get_observations(
         self,
         station_id: str,
-        days_back: int = 7,
+        days_back: int = 5,
     ) -> List[NWSObservation]:
         """
-        Fetch up to 7 days of hourly station observations.
+        Fetch up to 3 days of hourly station observations.
         NWS API ignores start/end → we get last 500 records and filter locally.
         """
-        days_back = min(days_back, 7)
+        days_back = min(days_back, 3)
         cutoff_time = datetime.now(pytz.UTC) - timedelta(days=days_back)
 
         url = f"{self.config.base_url}/stations/{station_id}/observations"

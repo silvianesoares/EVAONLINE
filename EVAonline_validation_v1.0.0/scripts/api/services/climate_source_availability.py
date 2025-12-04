@@ -2,21 +2,24 @@
 Climate data source availability service.
 
 EVAonline rules (3 operation modes):
-1. HISTORICAL_EMAIL: 1-90 days, end <= today-29d (email, free choice)
-   - NASA POWER: 1990 -> today (no delay, avoids overlap via validation)
-   - Open-Meteo Archive: 1990 -> today-2d (with 2d delay)
+1. HISTORICAL_EMAIL: 1-90 days (email, free choice)
+   - NASA POWER: start 1990/01/01, end today (no delay)
+   - Open-Meteo Archive: start 1990/01/01, end today-2d (with 2d delay)
+
 2. DASHBOARD_CURRENT: [7,14,21,30] days, end=today fixed (web, dropdown)
-   - NASA POWER: today-29d -> today (30 days max, no delay)
-   - Open-Meteo Archive: today-29d -> today-2d (with 2d delay)
-   - Open-Meteo Forecast: today-1d -> today (fills gap)
+   - NASA POWER: start today-29d, end today (30 days max, no delay)
+   - Open-Meteo Archive: start today-29d, end today-2d (28 days max, 2d delay)
+   - Open-Meteo Forecast: start today-29d, end today (30 days max, no delay)
+
 3. DASHBOARD_FORECAST: 6 days fixed (today -> today+5d), web forecasts
    IF USA: radio button "Data Fusion" OR "Real station data"
-   - Fusion (default):
-     * Open-Meteo Forecast: today -> today+5d
-     * MET Norway: today -> today+5d (temp+humidity, global)
-     * NWS Forecast: today -> today+5d (USA, forecast)
-   - Stations (USA alternative):
-     * NWS Stations: today only (realtime)
+   3.1. Fusion (default):
+     * Open-Meteo Forecast: start today, end today+5d
+     * MET Norway: start today, end today+5d (global, nordic region)
+     * NWS Forecast: start today, end today+5d (USA only)
+
+   3.2. Stations (USA only):
+     * NWS Stations: start today-2d, end today (realtime)
 
 Responsibilities:
 1. Define temporal limits for each API by mode
@@ -54,41 +57,42 @@ class ClimateSourceAvailability:
     API_LIMITS: dict[str, dict[str, Any]] = {
         # Historical
         "nasa_power": {
-            "type": "historical",
+            "type": "historical_email+dashboard_current",
             "start_date": HISTORICAL_START_DATE,  # Centralized reference
             "end_date_offset": 0,  # today (no delay)
             "coverage": "global",
         },
         "openmeteo_archive": {
-            "type": "historical",
+            "type": "historical_email+dashboard_current",
             "start_date": HISTORICAL_START_DATE,  # 1990-01-01
-            "end_date_offset": -29,  # today-29d (HISTORICAL_EMAIL)
+            "end_date_offset": -2,  # today-2d (HISTORICAL_EMAIL)
             "coverage": "global",
         },
         # Forecast/Recent
         "openmeteo_forecast": {
-            "type": "forecast",
-            "start_date_offset": -1,  # today-1d (DASHBOARD_FORECAST)
+            "type": "dashboard_current+dashboard_forecast",
+            "start_date_offset": -29,  # today (DASHBOARD_FORECAST)
             "end_date_offset": +5,  # today+5d
             "coverage": "global",
         },
         "met_norway": {
-            "type": "forecast",
+            "type": "dashboard_forecast",
             "start_date_offset": 0,  # today
             "end_date_offset": +5,  # today+5d
-            "coverage": "global",
-            # Global: temp+humidity only | Nordic: +wind+precipitation
+            "coverage": "global+nordic_region",
+            "global": "temp+humidity",
+            "nordic_region": "temp+humidity+wind+precipitation",
             "regional_variables": True,
         },
         "nws_forecast": {
-            "type": "forecast",
+            "type": "dashboard_forecast",
             "start_date_offset": 0,  # today
             "end_date_offset": +5,  # today+5d
             "coverage": "usa",
         },
         "nws_stations": {
-            "type": "realtime",
-            "start_date_offset": -1,  # today-1d
+            "type": "dashboard_current",
+            "start_date_offset": -2,  # today-2d
             "end_date_offset": 0,  # now
             "coverage": "usa",
         },
@@ -184,7 +188,7 @@ class ClimateSourceAvailability:
             # 2. Check temporal limits
             if available:
                 api_type = limits["type"]
-                if api_type == "historical":
+                if api_type == "historical_email+dashboard_current":
                     # Historical APIs: check absolute limits
                     api_start = limits["start_date"]
                     api_end = today + timedelta(days=limits["end_date_offset"])
@@ -196,7 +200,7 @@ class ClimateSourceAvailability:
                         available = False
                         reasons.append(f"End date after {api_end}")
 
-                elif api_type in ["forecast", "realtime"]:
+                elif api_type in ["dashboard_forecast", "dashboard_current"]:
                     # Forecast/realtime APIs: check offsets
                     api_start = today + timedelta(
                         days=limits.get("start_date_offset", 0)
@@ -340,62 +344,6 @@ class ClimateSourceAvailability:
     ) -> dict[str, dict[str, Any]]:
         """
         Returns date limits specific to each API and context.
-
-        EVAonline rules (ref: 15/11/2025 - Updated to current date):
-
-        HISTORICAL_EMAIL (old data, FREE period, email delivery):
-        - NASA POWER: 1990-01-01 -> today (NO delay)
-        - Open-Meteo Archive: 1990-01-01 -> today-2d (with 2d delay)
-        - User chooses dates FREELY (any year since 1990)
-        - Restrictions: minimum 1 day, maximum 90 days period
-        - Validation: end <= today-29d (per climate_validation.py)
-
-        Valid examples (ref 15/11/2025):
-        - 18/07/2025 -> 15/10/2025 (89 days, 2025)
-        - 01/05/2013 -> 29/07/2013 (90 days, 2013)
-        - 01/01/1990 -> 31/01/1990 (31 days, 1990)
-
-        DASHBOARD_CURRENT (DROPDOWN period, recent data, web):
-        - End ALWAYS: today (15/11/2025)
-        - Start calculated: today - (days-1) to include today
-        - NASA POWER: today-29d -> today (NO delay, complete coverage)
-        - Open-Meteo Archive: today-29d -> today-2d (with 2d delay)
-        - Open-Meteo Forecast: today-29d -> today (fills Archive gap)
-
-        Valid examples:
-        - 17/10/2025 -> 15/11/2025 (30 days: today-29d to today)
-        - 09/11/2025 -> 15/11/2025 (7 days: today-6d to today)
-
-        DASHBOARD_FORECAST (next 5 days FIXED, web):
-        - Period: 6 total days fixed (today to today+5d, inclusive)
-        - IF USA: radio button with 2 options:
-          A) "Data Fusion" (default):
-             * Open-Meteo Forecast: today -> today+5d
-             * MET Norway: today -> today+5d (temp+humidity)
-             * NWS Forecast: today -> today+5d (if request <20h)
-          B) "Real station data" (alternative):
-             * NWS Stations: today only (realtime)
-             * Shows how many nearby stations found
-             * All variables available
-             * Download button
-
-        Example (ref 15/11/2025):
-        - 15/11/2025 -> 20/11/2025 (6 days: 15,16,17,18,19,20)
-
-        Args:
-            context: Request context
-            today: Reference date (default: today)
-
-        Returns:
-            Dict with limits per API:
-            {
-                "nasa_power": {
-                    "start_date": date(1990, 1, 1),
-                    "end_date": date(2025, 10, 15),
-                    "reason": "..."
-                },
-                ...
-            }
         """
         if today is None:
             today = date.today()
@@ -408,11 +356,11 @@ class ClimateSourceAvailability:
         limits: dict[str, dict[str, Any]] = {}
 
         if context_str == OperationMode.HISTORICAL_EMAIL.value:
-            # Historical_email: APIs provide from 1990 to today-29 days
+            # Historical_email: APIs provide from 1990 to today-2 days
             # User chooses FREELY within this range
             # Restrictions: 1-90 days period
-            # Limit today-29d avoids overlap with dashboard_current
-            historical_end = today - timedelta(days=29)
+            # Limit today-2d avoids overlap with dashboard_current
+            historical_end = today - timedelta(days=2)
             common_reason = (
                 f"Historical email: 1990 to {historical_end} "
                 "(user free choice, 1-90 days period)"
@@ -420,7 +368,7 @@ class ClimateSourceAvailability:
 
             limits["nasa_power"] = {
                 "start_date": cls.HISTORICAL_START_DATE,
-                "end_date": historical_end,
+                "end_date": today,
                 "min_period_days": 1,
                 "max_period_days": 90,
                 "reason": common_reason,
@@ -436,19 +384,20 @@ class ClimateSourceAvailability:
 
         elif context_str == OperationMode.DASHBOARD_CURRENT.value:
             # Dashboard_current: [7,14,21,30] days dropdown, end=today fixed
-            # NASA POWER: no delay, end = today
-            # Open-Meteo Archive: 2d delay, end = today-2d
-            # Open-Meteo Forecast: covers gap in recent days
-            # NOTE: start_date varies by selected period
+            # NASA POWER: 2d delay, end=today-2d
+            # Open-Meteo Archive: 2d delay, end=today-2d
+            # Open-Meteo Forecast: today-29d, end=today
+
             dashboard_start_30d = today - timedelta(days=29)  # 30 days max
             archive_end = today - timedelta(days=2)
+            nasapower_end = today - timedelta(days=2)
 
             limits["nasa_power"] = {
                 "start_date": dashboard_start_30d,
-                "end_date": today,
+                "end_date": nasapower_end,
                 "reason": (
-                    f"Dashboard current: {dashboard_start_30d} to {today} "
-                    "(no delay, complete coverage)"
+                    f"Dashboard current: {dashboard_start_30d} to {nasapower_end} "
+                    "(2-day delay, complete coverage)"
                 ),
             }
 
@@ -501,7 +450,7 @@ class ClimateSourceAvailability:
             # NWS Stations: alternative option for USA
             # (radio button: "Fusion" vs "Real stations")
             limits["nws_stations"] = {
-                "start_date": today,
+                "start_date": today - timedelta(days=2),
                 "end_date": today,
                 "reason": (
                     f"Dashboard forecast: {today} only "

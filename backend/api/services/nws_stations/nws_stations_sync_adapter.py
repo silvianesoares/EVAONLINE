@@ -45,7 +45,7 @@ class _FallbackGeographicUtils:
 # Import GeographicUtils for coverage validation
 GeographicUtils: type = _FallbackGeographicUtils
 try:
-    from scripts.api.services.geographic_utils import (
+    from backend.api.services.geographic_utils import (
         GeographicUtils,  # type: ignore[no-redef]
     )
 except ImportError:

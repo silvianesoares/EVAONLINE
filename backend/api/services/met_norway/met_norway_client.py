@@ -42,11 +42,11 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 # Import for regional detection (single source of truth)
-from scripts.api.services.geographic_utils import (
+from backend.api.services.geographic_utils import (
     GeographicUtils,
     validate_coordinates,
 )
-from scripts.api.services.weather_utils import (
+from backend.api.services.weather_utils import (
     METNorwayAggregationUtils,  # Moved from here to weather_utils
     WeatherConversionUtils,
     CacheUtils,  # Cache utilities

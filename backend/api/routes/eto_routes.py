@@ -4,7 +4,6 @@ ETo Calculation Routes
 
 import time
 from typing import Any, Dict, Optional
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -119,16 +118,20 @@ async def calculate_eto(
             period_type_str, OperationMode.DASHBOARD_CURRENT
         )
 
-        # 1. Usar ClimateValidationService
+        # 1. Usar ClimateValidationService (agora aceita "auto")
         validator = ClimateValidationService()
+
+        # Determine source for validation (use "auto" if not specified)
+        source_to_validate = request.sources if request.sources else "auto"
+
         is_valid, validation_result = validator.validate_all(
             lat=request.lat,
             lon=request.lng,
             start_date=request.start_date,
             end_date=request.end_date,
             variables=["et0_fao_evapotranspiration"],
-            source="auto",
-            mode=operation_mode,
+            source=source_to_validate,
+            mode=operation_mode.value,
         )
 
         if not is_valid:
@@ -136,63 +139,57 @@ async def calculate_eto(
                 status_code=400,
                 detail=(
                     f"Validação falhou: "
-                    f"{validation_result.get('errors', [])}"
+                    f"{validation_result.get('errors', {})}"
                 ),
             )
 
-        # 2. Converter datas para datetime objects para manager
-        start_dt = datetime.strptime(request.start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(request.end_date, "%Y-%m-%d")
-
-        # 3. Usar ClimateSourceManager para seleção
+        # 2. Usar ClimateSourceManager para seleção
         manager = ClimateSourceManager()
 
         if request.sources == "auto" or not request.sources:
-            # Auto-seleção usando validate_and_select_source
-            source_id, source_info = manager.validate_and_select_source(
+            # Auto-seleção: obter fontes compatíveis e escolher a melhor
+            compatible_sources = manager.get_available_sources_by_mode(
                 lat=request.lat,
                 lon=request.lng,
-                start_date=start_dt,
-                end_date=end_dt,
                 mode=operation_mode,
-                preferred_source=None,
             )
 
-            if not source_id:
+            if not compatible_sources:
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        f"Nenhuma fonte disponível: "
-                        f"{source_info.get('reason', 'Unknown error')}"
+                        f"Nenhuma fonte disponível para modo "
+                        f"{operation_mode.value} na localização fornecida"
                     ),
                 )
 
-            selected_source = source_id
+            # Selecionar primeira fonte (maior prioridade)
+            selected_source = compatible_sources[0]
             logger.info(
                 f"Auto-seleção: {operation_mode.value} em "
-                f"({request.lat}, {request.lng}) → {source_id}"
+                f"({request.lat}, {request.lng}) → {selected_source} "
+                f"(opções: {compatible_sources})"
             )
         else:
-            # Validar fonte especificada
+            # Fonte especificada: verificar se é compatível
             selected_source = request.sources
-            is_compatible, compat_reason = manager.validate_source_for_context(
-                source_id=selected_source,
+            compatible_sources = manager.get_available_sources_by_mode(
+                lat=request.lat,
+                lon=request.lng,
                 mode=operation_mode,
-                start_date=start_dt,
-                end_date=end_dt,
             )
 
-            if not is_compatible:
+            if selected_source not in compatible_sources:
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        f"Fonte '{selected_source}' incompatível: "
-                        f"{compat_reason}"
+                        f"Fonte '{selected_source}' incompatível com modo "
+                        f"{operation_mode.value}. Fontes válidas: "
+                        f"{compatible_sources}"
                     ),
                 )
 
-            logger.info(f"Fontes especificadas: {selected_source}")
-            source_info = None
+            logger.info(f"Fonte especificada: {selected_source}")
 
         # 4. Obter elevação (se não fornecida)
         elevation = request.elevation
@@ -230,7 +227,6 @@ async def calculate_eto(
             ),
             "websocket_url": f"/ws/task_status/{task_id}",
             "source": selected_source,
-            "source_info": source_info,
             "operation_mode": operation_mode.value,
             "location": {
                 "lat": request.lat,
@@ -241,6 +237,9 @@ async def calculate_eto(
             # Estimativa baseada no período
         }
 
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code (400, 404, etc)
+        raise
     except ValueError as ve:
         raise HTTPException(
             status_code=400, detail=f"Formato de data inválido: {str(ve)}"

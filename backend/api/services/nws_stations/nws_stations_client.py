@@ -30,7 +30,7 @@ class _GeographicUtilsFallback:
 
 
 try:
-    from scripts.api.services.geographic_utils import (
+    from backend.api.services.geographic_utils import (
         GeographicUtils as _GeographicUtils,
     )
 except ImportError:

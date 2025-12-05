@@ -72,7 +72,7 @@ def create_application() -> FastAPI:
 
 def mount_dash(app: FastAPI) -> FastAPI:
     """Dash will run separately on port 8050."""
-    logger.info("ℹ️ Dash will run separately on port 8050")
+    logger.info("Dash will run separately on port 8050")
     return app
 
 

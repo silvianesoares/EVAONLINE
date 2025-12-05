@@ -97,7 +97,7 @@ def __getattr__(name: str) -> Any:
 # VERSÃO E METADADOS
 # ===========================================
 
-__version__ = "1.2.0"  # Atualizado após correções em kalman_ensemble
+__version__ = "1.0.0"  # Atualizado após correções em kalman_ensemble
 __author__ = "EVAonline Team"
 __description__ = (
     "Data processing module for climate data analysis and ETo calculation. "

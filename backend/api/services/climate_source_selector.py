@@ -30,7 +30,7 @@ from typing import Any, Literal
 
 from loguru import logger
 
-from scripts.api.services.geographic_utils import GeographicUtils
+from backend.api.services.geographic_utils import GeographicUtils
 
 # Type hints for climate sources
 ClimateSource = Literal[

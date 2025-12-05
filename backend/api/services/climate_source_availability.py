@@ -3,11 +3,11 @@ Climate data source availability service.
 
 EVAonline rules (3 operation modes):
 1. HISTORICAL_EMAIL: 1-90 days (email, free choice)
-   - NASA POWER: start 1990/01/01, end today (no delay)
-   - Open-Meteo Archive: start 1990/01/01, end today-2d (with 2d delay)
+   - NASA POWER: start 1990/01/01, end today-2d (2d delay)
+   - Open-Meteo Archive: start 1990/01/01, end today-2d (2d delay)
 
 2. DASHBOARD_CURRENT: [7,14,21,30] days, end=today fixed (web, dropdown)
-   - NASA POWER: start today-29d, end today (30 days max, no delay)
+   - NASA POWER: start today-29d, end today-2d (28 days max, 2d delay)
    - Open-Meteo Archive: start today-29d, end today-2d (28 days max, 2d delay)
    - Open-Meteo Forecast: start today-29d, end today (30 days max, no delay)
 
@@ -36,7 +36,7 @@ from enum import StrEnum
 from typing import Any
 from loguru import logger
 
-from scripts.api.services.geographic_utils import GeographicUtils
+from backend.api.services.geographic_utils import GeographicUtils
 
 
 class OperationMode(StrEnum):  # StrEnum for Pydantic v2 compatibility
@@ -59,13 +59,13 @@ class ClimateSourceAvailability:
         "nasa_power": {
             "type": "historical_email+dashboard_current",
             "start_date": HISTORICAL_START_DATE,  # Centralized reference
-            "end_date_offset": 0,  # today (no delay)
+            "end_date_offset": -2,  # today-2d (2 day delay)
             "coverage": "global",
         },
         "openmeteo_archive": {
             "type": "historical_email+dashboard_current",
             "start_date": HISTORICAL_START_DATE,  # 1990-01-01
-            "end_date_offset": -2,  # today-2d (HISTORICAL_EMAIL)
+            "end_date_offset": -2,  # today-2d (2 day delay)
             "coverage": "global",
         },
         # Forecast/Recent

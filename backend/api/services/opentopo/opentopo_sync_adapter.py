@@ -41,8 +41,8 @@ from typing import Any
 
 from loguru import logger
 
-from scripts.api.services.geographic_utils import GeographicUtils
-from scripts.api.services.opentopo.opentopo_client import (
+from backend.api.services.geographic_utils import GeographicUtils
+from backend.api.services.opentopo.opentopo_client import (
     OpenTopoClient,
     OpenTopoConfig,
     OpenTopoLocation,

@@ -24,6 +24,12 @@ from dash import Input, Output, State, callback, dcc, html
 
 logger = logging.getLogger(__name__)
 
+# Importar OperationModeDetector
+from frontend.utils.mode_detector import (
+    OperationModeDetector,
+    parse_date_from_ui,
+)
+
 # Importar helper do backend para fontes disponíveis
 try:
     from backend.api.services.climate_source_selector import (
@@ -717,6 +723,42 @@ def render_conditional_form(data_type):
                     ],
                     className="mb-3",
                 ),
+                # MANDATORY Email field for historical data
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                html.Label(
+                                    [
+                                        "E-mail ",
+                                        html.Span(
+                                            "*",
+                                            style={"color": "red"},
+                                        ),
+                                    ],
+                                    className="mb-2",
+                                ),
+                                dbc.Input(
+                                    id="email-historical",
+                                    type="email",
+                                    placeholder="seu.email@exemplo.com",
+                                    className="w-100",
+                                    required=True,
+                                ),
+                                dbc.FormFeedback(
+                                    "Por favor, insira um e-mail válido",
+                                    type="invalid",
+                                ),
+                                html.Small(
+                                    "📧 Obrigatório para envio de relatório com dados históricos",
+                                    className="text-info d-block mt-1",
+                                ),
+                            ],
+                            md=12,
+                        ),
+                    ],
+                    className="mb-3",
+                ),
                 html.Small(
                     "💡 Dados históricos: 01/01/1990 até ontem (padrão EVAonline)",
                     className="text-muted",
@@ -967,13 +1009,17 @@ def validate_calculation_inputs(
 
 @callback(
     Output("eto-results-container", "children"),
+    Output("operation-mode-indicator", "children"),  # NEW: Visual indicator
     Input("calculate-eto-btn", "n_clicks"),
     [
-        State("navigation-coordinates", "data"),  # ✅ LER DO STORE!
+        State("navigation-coordinates", "data"),
         State("climate-source-dropdown", "value"),
         State("data-type-radio", "value"),
         State("start-date-historical", "date"),
         State("end-date-historical", "date"),
+        State("email-historical", "value"),  # NEW: Email field
+        State("current-subtype-radio", "value"),
+        State("days-current", "value"),
     ],
     prevent_initial_call=True,
 )
@@ -984,59 +1030,65 @@ def calculate_eto(
     data_type,
     start_date_hist,
     end_date_hist,
+    email_hist,
+    current_subtype,
+    days_current,
 ):
     """
-    Calcula ETo chamando o backend com validação completa de parâmetros.
+    Calcula ETo com detecção automática de modo operacional.
 
-    Validações:
-    - Coordenadas válidas no Store
-    - Fonte de dados selecionada
-    - Datas dentro dos limites da API
-    - Período não excede 90 dias para histórico
+    Usa OperationModeDetector para validar e preparar requisição.
+
+    Mapeamento UI → Backend:
+    - "historical" → HISTORICAL_EMAIL (1-90 days, requires email)
+    - "recent" → DASHBOARD_CURRENT (7/14/21/30 days)
+    - "forecast" → DASHBOARD_FORECAST (6 days fixed)
+
+    Returns:
+        Tuple (results_container, mode_indicator)
     """
-    logger.info(
-        f"🧮 calculate_eto CHAMADO! n_clicks={n_clicks}, data_type={data_type}, start_date={start_date_hist}, end_date={end_date_hist}"
-    )
+    logger.info("🧮 calculate_eto callback triggered")
 
     if n_clicks is None or n_clicks == 0:
-        logger.warning("⚠️ Abortando - n_clicks vazio ou zero")
-        return None
+        logger.warning("⚠️ Aborting - n_clicks empty or zero")
+        return None, None
 
-    logger.info(f"✅ Prosseguindo com validação...")
+    logger.info("✅ Proceeding with validation...")
 
     # ========================================================================
-    # 1. VALIDAR COORDENADAS (do Store)
+    # 1. VALIDATE COORDINATES (from Store)
     # ========================================================================
     if not coords_data:
-        logger.error("❌ coords_data vazio")
-        return dbc.Alert(
+        logger.error("❌ coords_data empty")
+        error_alert = dbc.Alert(
             [
                 html.I(className="bi bi-exclamation-triangle me-2"),
                 html.Strong("Erro: "),
-                "Coordenadas não encontradas. Selecione uma localização no mapa.",
+                "Coordenadas não encontradas.",
             ],
             color="danger",
         )
+        return error_alert, None
 
     try:
         lat = float(coords_data.get("lat"))
         lon = float(coords_data.get("lon"))
 
-        # Validar ranges
         if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-            logger.error(f"❌ Coordenadas inválidas: lat={lat}, lon={lon}")
-            return dbc.Alert(
+            logger.error(f"❌ Invalid coords: lat={lat}, lon={lon}")
+            error_alert = dbc.Alert(
                 [
                     html.I(className="bi bi-exclamation-triangle me-2"),
                     html.Strong("Erro: "),
-                    f"Coordenadas inválidas (lat={lat:.6f}, lon={lon:.6f}).",
+                    f"Coordenadas inválidas.",
                 ],
                 color="danger",
             )
+            return error_alert, None
 
     except (ValueError, TypeError, KeyError) as e:
-        logger.error(f"❌ Erro ao parsear coordenadas: {e}")
-        return dbc.Alert(
+        logger.error(f"❌ Error parsing coordinates: {e}")
+        error_alert = dbc.Alert(
             [
                 html.I(className="bi bi-exclamation-triangle me-2"),
                 html.Strong("Erro: "),
@@ -1044,144 +1096,139 @@ def calculate_eto(
             ],
             color="danger",
         )
+        return error_alert, None
 
     # ========================================================================
-    # 2. VALIDAR FONTE DE DADOS
+    # 2. DETECT OPERATION MODE & VALIDATE
     # ========================================================================
-    if not selected_source:
-        logger.error("❌ Nenhuma fonte selecionada")
-        return dbc.Alert(
-            [
-                html.I(className="bi bi-exclamation-triangle me-2"),
-                html.Strong("Erro: "),
-                "Selecione uma fonte de dados climáticos.",
-            ],
-            color="warning",
+    try:
+        # Determine UI selection based on data_type
+        if data_type == "historical":
+            ui_selection = "historical"
+        elif current_subtype == "recent":
+            ui_selection = "recent"
+        else:  # forecast
+            ui_selection = "forecast"
+
+        logger.info(f"🎯 UI Selection: {ui_selection}")
+
+        # Parse dates
+        start_date = None
+        end_date = None
+        period_days = None
+
+        if ui_selection == "historical":
+            # Validate email for historical mode
+            if not email_hist or "@" not in email_hist:
+                error_alert = dbc.Alert(
+                    [
+                        html.I(className="bi bi-exclamation-triangle me-2"),
+                        html.Strong("Erro: "),
+                        "E-mail válido obrigatório para dados históricos.",
+                    ],
+                    color="warning",
+                )
+                return error_alert, None
+
+            # Parse historical dates
+            start_date = parse_date_from_ui(start_date_hist)
+            end_date = parse_date_from_ui(end_date_hist)
+            logger.info(f"📅 Historical: {start_date} → {end_date}")
+
+        elif ui_selection == "recent":
+            # Parse period from dropdown
+            period_days = int(days_current)
+            logger.info(f"📅 Recent: last {period_days} days")
+
+        else:  # forecast
+            logger.info("📅 Forecast: next 6 days (fixed)")
+
+        # Use OperationModeDetector to prepare request
+        payload = OperationModeDetector.prepare_api_request(
+            ui_selection=ui_selection,
+            latitude=lat,
+            longitude=lon,
+            start_date=start_date,
+            end_date=end_date,
+            period_days=period_days,
+            email=email_hist if ui_selection == "historical" else None,
         )
 
-    logger.info(f"📡 Fonte selecionada: {selected_source}")
+        # Detect mode for visual indicator
+        backend_mode, mode_config = OperationModeDetector.detect_mode(
+            ui_selection, start_date, end_date, period_days
+        )
+
+        logger.info(f"✅ Mode detected: {backend_mode}")
+        logger.info(f"📦 Payload: {payload}")
+
+        # Create mode indicator badge
+        mode_colors = {
+            "HISTORICAL_EMAIL": "primary",
+            "DASHBOARD_CURRENT": "success",
+            "DASHBOARD_FORECAST": "warning",
+        }
+        mode_indicator = dbc.Badge(
+            [
+                html.I(className="bi bi-info-circle me-1"),
+                f"Modo: {backend_mode}",
+            ],
+            color=mode_colors.get(backend_mode, "secondary"),
+            className="mb-3 p-2",
+        )
+
+    except ValueError as e:
+        logger.error(f"❌ Validation error: {e}")
+        error_alert = dbc.Alert(
+            [
+                html.I(className="bi bi-exclamation-triangle me-2"),
+                html.Strong("Erro de validação: "),
+                str(e),
+            ],
+            color="danger",
+        )
+        return error_alert, None
+
+    except Exception as e:
+        logger.error(f"❌ Unexpected error: {e}")
+        error_alert = dbc.Alert(
+            [
+                html.I(className="bi bi-exclamation-octagon-fill me-2"),
+                html.Strong("Erro inesperado: "),
+                str(e),
+            ],
+            color="danger",
+        )
+        return error_alert, None
 
     # ========================================================================
-    # 3. VALIDAR DATAS (depende do tipo de dado)
-    # ========================================================================
-    from datetime import datetime, timedelta
-
-    if data_type == "historical":
-        if not start_date_hist or not end_date_hist:
-            return dbc.Alert(
-                [
-                    html.I(className="bi bi-exclamation-triangle me-2"),
-                    html.Strong("Erro: "),
-                    "Informe as datas de início e fim para dados históricos.",
-                ],
-                color="warning",
-            )
-
-        try:
-            start_dt = datetime.fromisoformat(start_date_hist)
-            end_dt = datetime.fromisoformat(end_date_hist)
-
-            # Validar ordem das datas
-            if start_dt > end_dt:
-                return dbc.Alert(
-                    [
-                        html.I(className="bi bi-exclamation-triangle me-2"),
-                        html.Strong("Erro: "),
-                        "Data de início deve ser anterior à data de fim.",
-                    ],
-                    color="warning",
-                )
-
-            # Validar limites (1990-01-01 até hoje-7 dias)
-            min_date = datetime(1990, 1, 1)
-            max_date = datetime.now() - timedelta(days=7)
-
-            if start_dt < min_date:
-                return dbc.Alert(
-                    [
-                        html.I(className="bi bi-exclamation-triangle me-2"),
-                        html.Strong("Erro: "),
-                        f"Data de início deve ser posterior a {min_date.strftime('%d/%m/%Y')}.",
-                    ],
-                    color="warning",
-                )
-
-            if end_dt > max_date:
-                return dbc.Alert(
-                    [
-                        html.I(className="bi bi-exclamation-triangle me-2"),
-                        html.Strong("Erro: "),
-                        f"Data de fim deve ser anterior a {max_date.strftime('%d/%m/%Y')} (delay de 7 dias).",
-                    ],
-                    color="warning",
-                )
-
-            # Validar período máximo (90 dias)
-            days_diff = (end_dt - start_dt).days
-            if days_diff > 90:
-                return dbc.Alert(
-                    [
-                        html.I(className="bi bi-exclamation-triangle me-2"),
-                        html.Strong("Erro: "),
-                        f"Período máximo: 90 dias. Você selecionou {days_diff} dias.",
-                    ],
-                    color="warning",
-                )
-
-        except ValueError as e:
-            return dbc.Alert(
-                [
-                    html.I(className="bi bi-exclamation-triangle me-2"),
-                    html.Strong("Erro: "),
-                    f"Formato de data inválido: {str(e)}",
-                ],
-                color="danger",
-            )
-
-    # ========================================================================
-    # 4. CHAMAR BACKEND (TODO: implementar requisição HTTP)
-    # ========================================================================
-    logger.info(f"✅ Validações OK - Pronto para chamar backend")
-    logger.info(f"   📍 Coordenadas: lat={lat:.6f}, lon={lon:.6f}")
-    logger.info(f"   📡 Fonte: {selected_source}")
-    logger.info(f"   📅 Tipo: {data_type}")
-
-    # ========================================================================
-    # 4. FAZER REQUISIÇÃO HTTP PARA BACKEND
+    # 3. CALL BACKEND API
     # ========================================================================
     import requests
 
     try:
-        logger.info("🔄 Enviando requisição para backend...")
+        logger.info("🔄 Sending request to backend...")
 
-        # Preparar payload
-        payload = {
-            "lat": lat,
-            "lng": lon,  # Backend usa "lng" não "lon"
-            "start_date": start_date_hist,
-            "end_date": end_date_hist,
-            "sources": selected_source,  # Ex: "fusion", "openmeteo_forecast", etc
-        }
+        # Add selected source to payload
+        payload["sources"] = selected_source
 
-        logger.info(f"📦 Payload: {payload}")
+        logger.info(f"📦 Final payload: {payload}")
 
-        # Fazer requisição POST
+        # Make POST request
         response = requests.post(
             "http://localhost:8000/api/v1/internal/eto/calculate",
             json=payload,
-            timeout=30,  # 30 segundos
+            timeout=30,
         )
 
-        # Verificar status
+        # Check status
         if response.status_code == 200:
-            logger.info("✅ Backend respondeu com sucesso!")
+            logger.info("✅ Backend responded successfully!")
             results = response.json()
-            logger.info(
-                f"📊 Resultados recebidos: {len(results.get('data', []))} registros"
-            )
+            logger.info(f"📊 Results: {len(results.get('data', []))}")
 
-            # TODO: Criar visualização dos resultados
-            return dbc.Card(
+            # Create results visualization
+            results_card = dbc.Card(
                 [
                     dbc.CardHeader(
                         [
@@ -1219,9 +1266,11 @@ def calculate_eto(
                 ],
                 className="mt-4",
             )
+            return results_card, mode_indicator
+
         else:
-            logger.error(f"❌ Backend retornou erro {response.status_code}")
-            return dbc.Alert(
+            logger.error(f"❌ Backend error {response.status_code}")
+            error_alert = dbc.Alert(
                 [
                     html.I(className="bi bi-exclamation-triangle me-2"),
                     html.Strong(f"Erro {response.status_code}: "),
@@ -1229,32 +1278,35 @@ def calculate_eto(
                 ],
                 color="danger",
             )
+            return error_alert, mode_indicator
 
     except requests.Timeout:
-        logger.error("⏱️ Timeout na requisição ao backend")
-        return dbc.Alert(
+        logger.error("⏱️ Request timeout")
+        error_alert = dbc.Alert(
             [
                 html.I(className="bi bi-clock-fill me-2"),
                 html.Strong("Timeout: "),
-                "O backend demorou muito para responder (>30s). Tente novamente.",
+                "Backend demorou muito (>30s).",
             ],
             color="warning",
         )
+        return error_alert, mode_indicator
 
     except requests.ConnectionError:
-        logger.error("🔌 Erro de conexão com backend")
-        return dbc.Alert(
+        logger.error("🔌 Connection error")
+        error_alert = dbc.Alert(
             [
                 html.I(className="bi bi-plug-fill me-2"),
                 html.Strong("Erro de conexão: "),
-                "Não foi possível conectar ao backend. Certifique-se de que está rodando em http://localhost:8000",
+                "Não foi possível conectar ao backend.",
             ],
             color="danger",
         )
+        return error_alert, mode_indicator
 
     except Exception as e:
-        logger.error(f"💥 Erro inesperado: {str(e)}")
-        return dbc.Alert(
+        logger.error(f"💥 Unexpected error: {str(e)}")
+        error_alert = dbc.Alert(
             [
                 html.I(className="bi bi-exclamation-octagon-fill me-2"),
                 html.Strong("Erro inesperado: "),
@@ -1262,9 +1314,10 @@ def calculate_eto(
             ],
             color="danger",
         )
+        return error_alert, mode_indicator
 
-    # Fallback (nunca deve chegar aqui)
-    return dbc.Card(
+    # Fallback
+    fallback_card = dbc.Card(
         [
             dbc.CardHeader(
                 [
@@ -1311,6 +1364,7 @@ def calculate_eto(
         ],
         className="mt-4",
     )
+    return fallback_card, mode_indicator
 
 
 logger.info("✅ Página ETo carregada com sucesso")

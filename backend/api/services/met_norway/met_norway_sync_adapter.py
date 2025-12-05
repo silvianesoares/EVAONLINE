@@ -30,7 +30,7 @@ from typing import Any
 
 from loguru import logger
 
-from scripts.api.services.geographic_utils import GeographicUtils
+from backend.api.services.geographic_utils import GeographicUtils
 
 from .met_norway_client import (
     METNorwayDailyData,

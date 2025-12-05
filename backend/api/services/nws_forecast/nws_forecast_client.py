@@ -58,10 +58,10 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 try:
-    from scripts.api.services.geographic_utils import (
+    from backend.api.services.geographic_utils import (
         GeographicUtils,
     )
-    from scripts.api.services.weather_utils import (
+    from backend.api.services.weather_utils import (
         WeatherConversionUtils,
     )
 except ImportError:

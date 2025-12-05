@@ -57,18 +57,20 @@ class ClimateValidationService:
         "et0_fao_evapotranspiration",
     }
 
-    # Valid sources (all 6 implemented APIs)
+    # Valid sources (all 6 implemented APIs + auto-selection)
     # Set for O(1) lookup
     VALID_SOURCES: set[str] = {
+        # Special value for intelligent auto-selection
+        "auto",  # Triggers ClimateSourceManager.validate_and_select_source
         # Global - Historical Data
         "openmeteo_archive",  # Historical (1990-01-01 -> today-2d)
-        "nasa_power",  # Historical (1990-01-01 -> today-2d)
+        "nasa_power",  # Historical (1990-01-01 -> today-2d, 2d delay)
         # Global/Nordic region - Forecast/Recent
         "openmeteo_forecast",  # Recent+Forecast (today-29d -> today+5d)
         "met_norway",  # Forecast (today -> today+5d)
         # USA Stations/Forecast
         "nws_forecast",  # Forecast (today -> today+5d)
-        "nws_stations",  # Real-time observations (today-2days -> today)
+        "nws_stations",  # Real-time observations (today-2d -> today)
     }
 
     @staticmethod
@@ -129,20 +131,18 @@ class ClimateValidationService:
 
         # MODE 1: HISTORICAL_EMAIL (old data, email delivery)
         if mode == OperationMode.HISTORICAL_EMAIL.value:
-            # VALIDATION MODE: Allow any period length (not just 1-90 days)
-            # Original: if not (1 <= period_days <= 90)
-            # For validation purposes, we need to support 1990-2025 (34 years)
-            if period_days < 1:
+            # Period: 1-90 days (EVAonline rule for email delivery)
+            if not (1 <= period_days <= 90):
                 errors.append(
-                    f"Historical period must be >= 1 day, "
+                    f"Historical period must be 1-90 days, "
                     f"got {period_days}"
                 )
-            # Constraint: end_date <= today - 29 days
-            max_end = today
+            # Constraint: end_date <= today-2d (both NASA POWER and Archive have 2d delay)
+            max_end = today - timedelta(days=2)
             if end > max_end:
                 errors.append(
                     f"Historical end_date must be <= {max_end} "
-                    f"(today), got {end_date}"
+                    f"(today-2d), got {end_date}"
                 )
             # Constraint: start_date >= 1990-01-01
             if start < ClimateValidationService.MIN_HISTORICAL_DATE:
@@ -384,7 +384,7 @@ class ClimateValidationService:
         Validate data source.
 
         Args:
-            source: Source name
+            source: Source name (or 'auto' for intelligent selection)
 
         Returns:
             Tuple (valid, details)
@@ -397,6 +397,13 @@ class ClimateValidationService:
                     ClimateValidationService.VALID_SOURCES
                 ),
             }
+
+        # 'auto' is valid but will be resolved later by ClimateSourceManager
+        if source == "auto":
+            logger.bind(source=source).debug(
+                "Source 'auto' validated (will trigger auto-selection)"
+            )
+            return True, {"source": source, "valid": True, "auto_select": True}
 
         logger.bind(source=source).debug("Source validated")
         return True, {"source": source, "valid": True}
@@ -412,7 +419,7 @@ class ClimateValidationService:
         Logic:
         1. If start ≈ today AND end ≈ today+5d -> DASHBOARD_FORECAST
         2. If end = today AND period in [7,14,21,30] -> DASHBOARD_CURRENT
-        3. If end <= today-2d AND period <= 90 -> HISTORICAL_EMAIL
+        3. If end <= today-2d AND period 1-90 days -> HISTORICAL_EMAIL
         4. Otherwise -> None (mode not identifiable)
 
         Args:
@@ -445,7 +452,7 @@ class ClimateValidationService:
             return OperationMode.DASHBOARD_CURRENT.value, None
 
         # Rule 3: HISTORICAL_EMAIL
-        # end <= today - 2 days AND 1 <= period <= 90 days
+        # end <= today-2d (both NASA and Archive have 2 day delay) AND 1-90 days
         if end <= today - timedelta(days=2) and 1 <= period_days <= 90:
             return OperationMode.HISTORICAL_EMAIL.value, None
 

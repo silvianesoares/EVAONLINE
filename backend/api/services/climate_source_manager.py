@@ -15,12 +15,12 @@ from typing import Any
 
 from loguru import logger
 
-from scripts.api.services.climate_source_availability import (
+from backend.api.services.climate_source_availability import (
     ClimateSourceAvailability,
     OperationMode,
 )
-from scripts.api.services.climate_source_selector import ClimateSourceSelector
-from scripts.api.services.geographic_utils import GeographicUtils
+from backend.api.services.climate_source_selector import ClimateSourceSelector
+from backend.api.services.geographic_utils import GeographicUtils
 
 
 def normalize_operation_mode(period_type: str | None) -> OperationMode:
@@ -70,8 +70,8 @@ class ClimateSourceManager:
     -------------------------------
     EVAonline rules (3 operation modes):
     1. HISTORICAL_EMAIL: 1-90 days (email, free choice)
-    - NASA POWER: start 1990/01/01, end today-2d (with 2d delay)
-    - Open-Meteo Archive: start 1990/01/01, end today-2d (with 2d delay)
+    - NASA POWER: start 1990/01/01, end today-2d (2d delay)
+    - Open-Meteo Archive: start 1990/01/01, end today-2d (2d delay)
 
     2. DASHBOARD_CURRENT: [7,14,21,30] days, end=today fixed (web, dropdown)
     - NASA POWER: start today-29d, end today-2d (28 days max, 2d delay)
@@ -446,42 +446,21 @@ class ClimateSourceManager:
         # Step 1: Get ALL available sources at location
         available_sources = ClimateSourceSelector.get_all_sources(lat, lon)
 
-        # Step 2: Filter by temporal capability of mode
-        # Use typical temporal limits of each mode for validation
-        today = date.today()
-
-        # Define representative period for each mode
-        if mode == OperationMode.HISTORICAL_EMAIL:
-            # Historical: start=1990/01/01, end=today-2d
-            # Open-Meteo Archive and NASA POWER
-            start_date = date(1990, 1, 1)
-            end_date = today - timedelta(days=2)
-
-        elif mode == OperationMode.DASHBOARD_CURRENT:
-            # Current: start=today-29d, end=today, period in [7,14,21,30]
-            # Open-Meteo Archive, Open-Meteo Forecast, NASA POWER
-            start_date = today - timedelta(days=29)
-            end_date = today
-
-        elif mode == OperationMode.DASHBOARD_FORECAST:
-            # Forecast: start=today, end=today+5d
-            # Open-Meteo Forecast, MET Norway, NWS Forecast
-            start_date = today
-            end_date = today + timedelta(days=5)
-
-        else:
-            # Default: use current (min 7 days)
-            start_date = today - timedelta(days=7)
-            end_date = today
+        # Step 2: Filter by mode type (each source declares which modes it supports)
+        mode_value = mode.value if isinstance(mode, OperationMode) else mode
 
         compatible_sources = []
 
         for source_id in available_sources:
-            # Check temporal compatibility
-            availability = ClimateSourceAvailability.get_available_sources(
-                start_date, end_date, lat, lon
-            )
-            if availability["available"]:
+            # Get API limits to check mode compatibility
+            api_limits = ClimateSourceAvailability.API_LIMITS.get(source_id)
+            if not api_limits:
+                continue
+
+            # Check if source supports this mode
+            supported_types = api_limits["type"].split("+")
+
+            if mode_value in supported_types:
                 compatible_sources.append(source_id)
 
         # Sort by priority

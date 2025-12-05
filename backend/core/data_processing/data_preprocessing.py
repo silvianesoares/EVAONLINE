@@ -118,7 +118,7 @@ def data_initial_validate(
       - 0 mm < precipitation < 450 mm
       - 0.03Ra ≤ solar_radiation < Ra
       - 0 m/s ≤ wind_speed < 100 m/s
-      - −30°C < temperature_max
+      - -30°C < temperature_max
       - temperature_min < 50°C
     - **Global** (conservative world limits):
       - More relaxed ranges based on world records
@@ -136,11 +136,6 @@ def data_initial_validate(
         Tuple[pd.DataFrame, List[str]]: Validated DataFrame and list of
             warnings with metrics.
 
-    Example:
-        >>> df = pd.DataFrame({...}, index=pd.to_datetime([...]))
-        >>> validated_df, warnings = data_initial_validate(
-        ...     df, latitude=-10.0, region="brazil"
-        ... )
     """
     logger.info("Validating weather data")
     warnings = []
@@ -160,62 +155,64 @@ def data_initial_validate(
 
     weather_df = weather_df.copy()
     if isinstance(weather_df.index, pd.DatetimeIndex):
-        weather_df["day_of_year"] = weather_df.index.dayofyear
+        weather_df["day_of_year"] = weather_df.index.dayofyear.astype(float)
     else:
         raise ValueError("DataFrame index must be DatetimeIndex")
 
-    def is_leap_year(year: int) -> bool:
-        return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
+    # Calculate extraterrestrial radiation (Ra) - FAO-56 Eqs. 21-25
+    # (Allen et al., 1998) - Optimized with vectorization
+    Gsc = 0.0820  # Solar constant [MJ m^-2 min^-1]
+    phi = np.radians(latitude)  # Latitude in radians
 
-    if isinstance(weather_df.index, pd.DatetimeIndex):
-        # Use the most common year in the dataset for leap year calculation
-        year = weather_df.index.year.value_counts().index[0]
-    else:
-        raise ValueError("DataFrame index must be DatetimeIndex")
-    total_days_in_year = 366 if is_leap_year(year) else 365
-
-    # Calculate extraterrestrial radiation (Ra) - optimized for unique
-    # day_of_year values
-    phi = latitude * np.pi / 180
     unique_days = weather_df["day_of_year"].unique()
-    day_of_year_unique = unique_days.astype(float)
+    doy_unique = unique_days.astype(float)
 
-    dr = 1 + 0.033 * np.cos(
-        2 * np.pi * day_of_year_unique / total_days_in_year
+    # Eq. 23: Inverse relative distance Earth-Sun
+    dr = 1.0 + 0.033 * np.cos(2.0 * np.pi * doy_unique / 365.0)
+
+    # Eq. 24: Solar declination (radians)
+    delta = 0.409 * np.sin(2.0 * np.pi * doy_unique / 365.0 - 1.39)
+
+    # Eq. 25: Sunset hour angle (omega_s) with polar case handling
+    cos_ws = -np.tan(phi) * np.tan(delta)
+    cos_ws = np.clip(cos_ws, -1.0, 1.0)  # Ensure arccos domain
+
+    # Polar cases: sun never sets (ws=pi) or never rises (ws=0)
+    omega_s = np.zeros_like(cos_ws)
+    omega_s = np.where(cos_ws <= -1.0, np.pi, omega_s)  # Never sets
+    omega_s = np.where(
+        (cos_ws > -1.0) & (cos_ws < 1.0), np.arccos(cos_ws), omega_s
     )
-    delta = 0.409 * np.sin(
-        (2 * np.pi * day_of_year_unique / total_days_in_year) - 1.39
-    )
-    omega_s = np.arccos(-np.tan(phi) * np.tan(delta))
-    const = (24 * 60 * 0.0820) / np.pi
+    # cos_ws >= 1.0 -> sun never rises -> ws = 0 (already zero)
+
+    # Eq. 21: Extraterrestrial radiation
     Ra_unique = (
-        const
+        (24.0 * 60.0 / np.pi)
+        * Gsc
         * dr
         * (
             omega_s * np.sin(phi) * np.sin(delta)
             + np.cos(phi) * np.cos(delta) * np.sin(omega_s)
         )
     )
+    Ra_unique = np.maximum(Ra_unique, 0.0)  # Ensure non-negative
 
-    # Create mapping from day_of_year to Ra
+    # Create mapping from day_of_year to calculated values
     ra_mapping = dict(zip(unique_days, Ra_unique))
+    dr_mapping = dict(zip(unique_days, dr))
+    delta_mapping = dict(zip(unique_days, delta))
+    omega_s_mapping = dict(zip(unique_days, omega_s))
 
-    # Apply Ra values to DataFrame
+    # Apply values to DataFrame
     weather_df["Ra"] = weather_df["day_of_year"].map(ra_mapping)
+    weather_df["dr"] = weather_df["day_of_year"].map(dr_mapping)
+    weather_df["delta"] = weather_df["day_of_year"].map(delta_mapping)
+    weather_df["omega_s"] = weather_df["day_of_year"].map(omega_s_mapping)
+
+    # Validate Ra values
     if not (weather_df["Ra"] > 0).all():
         warnings.append("Invalid Ra values detected.")
         logger.error(warnings[-1])
-
-    # Store additional parameters for reference
-    weather_df["dr"] = weather_df["day_of_year"].map(
-        dict(zip(unique_days, dr))
-    )
-    weather_df["delta"] = weather_df["day_of_year"].map(
-        dict(zip(unique_days, delta))
-    )
-    weather_df["omega_s"] = weather_df["day_of_year"].map(
-        dict(zip(unique_days, omega_s))
-    )
 
     # Apply physical limits based on region
     # Suporta TODAS as variáveis retornadas pelas 7 fontes de dados para ETo:
@@ -243,16 +240,10 @@ def data_initial_validate(
 
     # Validate solar radiation (NASA: ALLSKY_SFC_SW_DWN MJ/m²/day,
     # Open-Meteo/MET Norway: shortwave_radiation_sum may be in J/m²/day)
-    radiation_cols = ["ALLSKY_SFC_SW_DWN", "shortwave_radiation_sum"]
+    radiation_cols = ["ALLSKY_SFC_SW_DWN"]
     for rad_col in radiation_cols:
         if rad_col in weather_df.columns:
-            # Convert J/m²/day to MJ/m²/day if values are too high
-            rad_values = weather_df[rad_col].dropna()
-            if not rad_values.empty and rad_values.max() > 100:
-                # Likely in J/m²/day, convert to MJ/m²/day
-                weather_df[rad_col] = weather_df[rad_col] / 1000000
-                logger.info(f"Converted {rad_col} from J/m²/day to MJ/m²/day")
-
+            # Validate against physical limits (0.03*Ra to Ra)
             invalid_rad_mask = ~weather_df[rad_col].between(
                 0.03 * weather_df["Ra"], weather_df["Ra"], inclusive="left"
             )
@@ -598,11 +589,8 @@ def preprocessing(
         Tuple[pd.DataFrame, List[str]]: Preprocessed DataFrame and list of
         warnings with metrics.
 
-    Example:
-        >>> df = pd.DataFrame({...}, index=pd.to_datetime([...]))
-        >>> preprocessed_df, warnings = preprocessing(df, latitude=-10.0,
-                                                     cache_key="preprocess_20230101_-10.0_-45.0")
     """
+
     logger.info("Starting preprocessing pipeline")
     warnings = []
 

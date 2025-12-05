@@ -45,7 +45,7 @@ import requests_cache
 from loguru import logger
 from retry_requests import retry
 
-from scripts.api.services.geographic_utils import GeographicUtils
+from backend.api.services.geographic_utils import GeographicUtils
 
 
 class OpenMeteoForecastConfig:

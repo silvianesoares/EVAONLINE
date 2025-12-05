@@ -210,6 +210,11 @@ eto_layout = html.Div(
                                                     id="validation-alert",
                                                     className="mt-3",
                                                 ),
+                                                # Operation mode indicator
+                                                html.Div(
+                                                    id="operation-mode-indicator",
+                                                    className="mt-2",
+                                                ),
                                             ]
                                         ),
                                     ],

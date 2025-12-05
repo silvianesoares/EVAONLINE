@@ -182,12 +182,6 @@ EVAonline integrates multiple real-time weather data sources through RESTful API
   - Weighted ensemble approach for robust estimates
   - Automated quality control and cross-validation
 
-#### Quality Assurance
-- **Global Validation**:
-  - AgERA5 (ECMWF) dataset used for worldwide ET₀ validation
-  - Comprehensive validation across different climate zones
-  - Regular accuracy assessments against reference data
-
 - **Brazilian Regional Validation**:
   - Validation against Xavier's Brazilian Daily Weather Gridded Dataset
   - High-resolution (0.25° x 0.25°) meteorological data covering Brazil
@@ -199,7 +193,7 @@ EVAonline integrates multiple real-time weather data sources through RESTful API
   - Automated elevation retrieval for any location
   - Ensures accurate ET₀ calculations worldwide
 
-*Note: EVAonline employs sophisticated data fusion algorithms to combine multiple real-time data sources, with AgERA5 serving as an independent validation dataset to ensure calculation accuracy.*
+*Note: EVAonline employs data fusion algorithms to combine multiple real-time data sources, with AgERA5 serving as an independent validation dataset to ensure calculation accuracy.*
 
 ### Visualization
 - **Interactive Maps**: GeoJSON layers with OpenStreetMap tiles
